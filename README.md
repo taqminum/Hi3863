@@ -97,5 +97,6 @@ Start here:
 
 - `docs/ws63e_env_patrol_technical_chain.md`
 - `docs/repository_management.md`
+- `docs/coding_agent_constraints.md`
 - `src/application/samples/Farsight/ws63e_env_patrol_car/comm/CONTROL.md`
 - `src/application/samples/Farsight/ws63e_env_patrol_car/comm/PROTOCOL.md`
