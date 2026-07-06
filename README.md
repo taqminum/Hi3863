@@ -44,7 +44,8 @@ Manage this as one repository with two firmware targets:
 | Target | Path | Port |
 | --- | --- | --- |
 | WS63E car | `src/application/samples/Farsight/ws63e_env_patrol_car` | COM6 |
-| BearPi gateway | `vendor/BearPi-Pico_H3863/products/ws63e_env_gateway` | COM5 |
+| BearPi gateway source copy | `vendor/BearPi-Pico_H3863/products/ws63e_env_gateway` | COM5 |
+| BearPi gateway build workspace | `G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\ws63e_env_gateway` | COM5 |
 
 Do not mix the two firmware codebases. Shared behavior should be expressed through the documented command and telemetry protocol only.
 
@@ -90,6 +91,14 @@ python build.py ws63-liteos-app
 ```
 
 BearPi gateway work should follow the official BearPi-Pico H3863 workflow and use `vendor/BearPi-Pico_H3863/products/ws63e_env_gateway` as the clean product directory.
+
+BearPi-Pico H3863 is compiled separately from the car project. The VSCode/DevEco BearPi workspace currently lives at:
+
+```text
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863
+```
+
+When building or flashing BearPi, open/use that SDK workspace, select `CONFIG_SAMPLE_SUPPORT_WS63E_ENV_GATEWAY=y`, rebuild `ws63-liteos-app`, and flash COM5. The car project remains under `src` and flashes COM6.
 
 ## Documentation
 

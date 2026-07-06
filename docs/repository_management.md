@@ -7,9 +7,18 @@ This repository is managed as one monorepo with two firmware targets and one sha
 | Target | Path | Role | Port |
 | --- | --- | --- | --- |
 | WS63E car | `src/application/samples/Farsight/ws63e_env_patrol_car` | Vehicle controller, sensors, OLED, motors, SLE client, Wi-Fi fallback | COM6 |
-| BearPi-Pico H3863 gateway | `vendor/BearPi-Pico_H3863/products/ws63e_env_gateway` | Wi-Fi gateway, SLE server, phone App entry | COM5 |
+| BearPi-Pico H3863 gateway source copy | `vendor/BearPi-Pico_H3863/products/ws63e_env_gateway` | Versioned source copy for review and handoff | COM5 |
+| BearPi-Pico H3863 gateway build workspace | `G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\ws63e_env_gateway` | Actual VSCode/DevEco build target | COM5 |
 
 The BearPi gateway directory may not exist in the initial commit. It should be created as a clean product directory derived from the official BearPi samples.
+
+The BearPi firmware is not compiled from the car `src` workspace. Build and flash it separately from the official BearPi SDK workspace:
+
+```text
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863
+```
+
+The repository copy under `vendor/BearPi-Pico_H3863` is used to keep the gateway source and documentation with the project. When code changes are made there, sync the product directory into the BearPi SDK workspace before using VSCode/DevEco to rebuild COM5 firmware.
 
 ## Reference Samples
 

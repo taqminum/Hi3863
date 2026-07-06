@@ -32,13 +32,28 @@ G:\fbb_ws63_20260226\src\ws63e_env_patrol_car.hiproj
 G:\fbb_ws63_20260226\src\application\samples\Farsight\ws63e_env_patrol_car
 ```
 
-BearPi-Pico H3863 官方样例根目录：
+仓库内 BearPi-Pico H3863 源码副本：
 
 ```text
 G:\fbb_ws63_20260226\vendor\BearPi-Pico_H3863
 ```
 
-BearPi 现有参考样例：
+实际 VSCode/DevEco BearPi SDK 工程根目录：
+
+```text
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863
+```
+
+BearPi 现有参考样例在真实 SDK 中位于：
+
+```text
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\sle_uart
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\sle_gateway
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\ble_uart
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\wifi\softap_sample
+```
+
+仓库内也保留一份 BearPi 参考源码副本：
 
 ```text
 G:\fbb_ws63_20260226\vendor\BearPi-Pico_H3863\products\sle_uart
@@ -52,6 +67,7 @@ BearPi 后续新工程建议单独新建，不直接污染官方样例：
 
 ```text
 G:\fbb_ws63_20260226\vendor\BearPi-Pico_H3863\products\ws63e_env_gateway
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\ws63e_env_gateway
 ```
 
 烧录配置：
@@ -61,7 +77,7 @@ G:\fbb_ws63_20260226\vendor\BearPi-Pico_H3863\products\ws63e_env_gateway
 固件包：G:\fbb_ws63_20260226\src\output\ws63\fwpkg\ws63-liteos-app\ws63-liteos-app_all.fwpkg
 ```
 
-BearPi-Pico H3863 工程按官方推荐工作流维护。当前已烧录并验证 SLE UART Server，后续需要在官方样例基础上改造成 Wi-Fi + SLE 网关。它当前广播的 SLE 名称为：
+BearPi-Pico H3863 工程按官方推荐工作流维护，并且必须与小车工程分开编译。当前已烧录并验证 SLE UART Server，后续需要在官方样例基础上改造成 Wi-Fi + SLE 网关。它当前广播的 SLE 名称为：
 
 ```text
 sle_uart_server
@@ -74,7 +90,17 @@ sle_uart_server
 | 固件 | 目录 | 角色 | 串口 |
 | --- | --- | --- | --- |
 | WS63E 小车 | `src\application\samples\Farsight\ws63e_env_patrol_car` | 车体主控、传感器、电机、SLE Client、Wi-Fi fallback | COM6 |
-| BearPi-Pico H3863 | `vendor\BearPi-Pico_H3863\products\ws63e_env_gateway` | Wi-Fi 主控网关、SLE Server、App 接入点 | COM5 |
+| BearPi-Pico H3863 源码副本 | `vendor\BearPi-Pico_H3863\products\ws63e_env_gateway` | 仓库管理、代码审查和交付记录 | COM5 |
+| BearPi-Pico H3863 实际编译目录 | `G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\ws63e_env_gateway` | VSCode/DevEco 编译、烧录的真实工程 | COM5 |
+
+编译入口必须分开：
+
+```text
+小车：G:\fbb_ws63_20260226\src
+BearPi：G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863
+```
+
+BearPi 网关源码若先在仓库 `vendor` 副本中修改，需要同步到真实 SDK 的 `application\samples\products\ws63e_env_gateway` 后，再用 VSCode/DevEco 选择 `CONFIG_SAMPLE_SUPPORT_WS63E_ENV_GATEWAY=y` 编译和烧录 COM5。
 
 为了保证新工程完整和干净，后续编码智能体应遵守以下规则：
 

@@ -159,6 +159,13 @@
       "chip": "WS63",
       "buildDef": "",
       "needSmoke": "false"
+    },
+    {
+      "buildTarget": "ws63-liteos-app",
+      "relativePath": "products/ws63e_env_gateway",
+      "chip": "WS63",
+      "buildDef": "CONFIG_SAMPLE_SUPPORT_WS63E_ENV_GATEWAY=y,CONFIG_SUPPORT_SLE_PERIPHERAL=1",
+      "needSmoke": "false"
     }
   ]
   

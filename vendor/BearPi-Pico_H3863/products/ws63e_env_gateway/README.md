@@ -1,51 +1,183 @@
 # WS63E Environment Gateway for BearPi-Pico H3863
 
-This directory is reserved for the BearPi-Pico H3863 gateway firmware.
+BearPi-Pico H3863 Wi-Fi + SLE gateway firmware for the WS63E environment patrol car.
 
-## Role
-
-The BearPi board is the Wi-Fi gateway and SLE server in the final project architecture:
+## Architecture
 
 ```text
-Phone App -> BearPi Wi-Fi gateway -> SLE -> WS63E car
-WS63E car -> SLE telemetry -> BearPi gateway -> Wi-Fi -> Phone App
+Phone App (UDP) <--Wi-Fi--> BearPi Gateway <--SLE--> WS63E Car
 ```
 
-## Boundaries
+- BearPi runs as **SLE Server**, advertises as `sle_uart_server`
+- BearPi runs **Wi-Fi SoftAP** for the phone App
+- The WS63E car connects as **SLE Client** (unchanged firmware)
+- Commands flow: Phone → UDP → BearPi → SLE → Car
+- Telemetry flows: Car → SLE → BearPi cache → UDP → Phone
 
-- Keep the car firmware in `src/application/samples/Farsight/ws63e_env_patrol_car`.
-- Keep this directory for BearPi gateway firmware only.
-- Do not modify the original official samples as final product code.
-- Use `products/sle_uart`, `products/sle_gateway`, `wifi/softap_sample`, and `wifi/udp_client` as references.
+## Build
 
-## Planned Interfaces
-
-Wi-Fi AP:
+This repository keeps a versioned source copy under:
 
 ```text
-SSID: WS63E_ENV_GATEWAY
-Password: 12345678
+G:\fbb_ws63_20260226\vendor\BearPi-Pico_H3863\products\ws63e_env_gateway
 ```
 
-SLE target name:
+The actual VSCode/DevEco BearPi build workspace is separate:
 
 ```text
-sle_uart_server
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863
 ```
 
-Suggested App APIs:
+Sync this product directory into:
 
-```http
-GET /api/data
-POST /api/control
-GET /api/status
+```text
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\ws63e_env_gateway
 ```
 
-## First Implementation Target
+Then build from the BearPi SDK root:
 
-1. Start from the official BearPi SLE UART server or SLE gateway sample.
-2. Preserve the SLE server name `sle_uart_server`.
-3. Add Wi-Fi AP and an HTTP or UDP command ingress.
-4. Forward App commands to the WS63E car over SLE.
-5. Cache the latest telemetry JSON received from the car.
-6. Expose the latest telemetry to the App over Wi-Fi.
+```powershell
+Set-Location G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863
+$env:PATH = "G:\DevTools_CFBB_V1.0.12\thirdparty\ccache;$env:PATH"
+python build.py ws63-liteos-app
+```
+
+Or use the VSCode/HiSpark Studio IDE in the BearPi SDK workspace:
+- Target: `ws63-liteos-app`
+- Kconfig: `CONFIG_SAMPLE_SUPPORT_WS63E_ENV_GATEWAY=y`
+- Enables: `SUPPORT_SLE_PERIPHERAL`
+
+## Flash
+
+- Serial port: **COM5**
+- Use HiBurn tool or equivalent programmer
+- Baud rate: 115200
+
+## Wi-Fi AP
+
+| Parameter | Value |
+|---|---|
+| SSID | `WS63E_ENV_GATEWAY` |
+| Password | `12345678` |
+| IP | `192.168.6.1` |
+| Netmask | `255.255.255.0` |
+| DHCP | Enabled (192.168.6.x range) |
+| Channel | 13 |
+| Security | WPA2/WPA mixed |
+
+## SLE
+
+| Parameter | Value |
+|---|---|
+| Advertised name | `sle_uart_server` |
+| Service UUID | `0x2222` |
+| Property UUID | `0x2323` |
+| MTU | 520 |
+| Role | Server (peripheral) |
+
+## UDP Protocol (Phone ↔ Gateway)
+
+**Transport**: UDP (first pass — HTTP planned for later version)
+
+| Parameter | Value |
+|---|---|
+| BearPi IP | `192.168.6.1` |
+| Port | `8888` |
+| Encoding | ASCII text, UTF-8 |
+
+### Commands (Phone → Gateway)
+
+Send any of these as a UDP datagram to `192.168.6.1:8888`:
+
+```
+forward
+backward
+left
+right
+stop
+auto_start
+auto_stop
+```
+
+JSON format is also accepted (car parser handles both):
+
+```json
+{"cmd":"forward","speed":35,"duration_ms":600}
+```
+
+### Telemetry (Gateway → Phone)
+
+Every UDP packet sent to the gateway receives a response containing the latest cached telemetry JSON:
+
+```json
+{"seq":8,"temp_x10":286,"humi_x10":630,"light_x10":2466,"temp_alert":0,"humi_alert":0,"light_alert":0,"motion":0,"patrol":0,"err":0}
+```
+
+To poll telemetry without issuing a command, send `GET` or `data`.
+
+### Test Commands
+
+**Windows PowerShell:**
+
+```powershell
+$udp = New-Object System.Net.Sockets.UdpClient
+$udp.Connect("192.168.6.1", 8888)
+$bytes = [System.Text.Encoding]::ASCII.GetBytes("forward")
+$udp.Send($bytes, $bytes.Length)
+$remote = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 0)
+$recv = $udp.Receive([ref]$remote)
+[System.Text.Encoding]::ASCII.GetString($recv)
+```
+
+**Linux/macOS (netcat):**
+
+```bash
+echo "forward" | nc -u -w2 192.168.6.1 8888
+```
+
+## Expected Serial Log (COM5, 115200)
+
+```
+[wifi_ap] wifi subsystem ready
+[wifi_ap] SoftAP started: SSID=WS63E_ENV_GATEWAY IP=192.168.6.1
+[ws63e_gateway] SLE server init OK, advertising as sle_uart_server
+[sle uart server] connect state changed callback ... conn_state:0x1 ...
+[sle uart server] pair complete conn_id:00, status:0x0
+[ws63e_gateway] rx telemetry: {"seq":1,"temp_x10":286,...}
+[udp_bridge] listening on port 8888
+[udp_bridge] rx from 192.168.6.2:12345 => forward
+[udp_bridge] forwarded to SLE: ret=0
+[udp_bridge] tx telemetry: {"seq":1,"temp_x10":286,...}
+```
+
+## Verification Checklist
+
+1. ✅ BearPi gateway builds
+2. ✅ Flash to COM5, check serial: `SLE server init OK`
+3. ✅ Wi-Fi AP `WS63E_ENV_GATEWAY` visible, connect from phone/PC
+4. ✅ Car auto-connects SLE: car serial shows `[car][sle] pair complete`
+5. ✅ BearPi serial shows telemetry JSON every second
+6. ✅ Send `forward` via UDP → car moves forward
+7. ✅ Send `stop` via UDP → car stops
+8. ✅ Send `GET` via UDP → receive telemetry JSON response
+9. ✅ All commands verified: forward, backward, left, right, stop, auto_start, auto_stop
+
+## Known Limitations
+
+- **UDP only** — HTTP API is planned but not yet implemented. UDP is the first-pass transport.
+- **No BLE** — BLE support is not included in this version.
+- **Single connection** — One car SLE Client at a time.
+- **No authentication** — UDP commands are accepted from any device on the Wi-Fi network.
+
+## Critical Implementation Note
+
+**SLE property `operate_indication` must include `SSAP_OPERATE_INDICATION_BIT_NOTIFY`** for server→client notifications to work. Using only `READ|WRITE` causes `ssaps_notify_indicate` to return success but the client never receives data. This was the root cause of the initial command delivery failure. See `docs/gateway_sle_notify_issue.md` for full analysis.
+
+## Reference Samples
+
+These directories are kept unchanged as fallback references:
+
+- `products/sle_uart` — Base SLE UART server/client
+- `products/sle_gateway` — SLE + Wi-Fi STA UDP gateway
+- `wifi/softap_sample` — Wi-Fi SoftAP setup
+- `wifi/udp_client` — UDP client over Wi-Fi STA

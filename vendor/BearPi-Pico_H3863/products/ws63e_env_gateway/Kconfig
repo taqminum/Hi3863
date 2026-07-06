@@ -1,0 +1,7 @@
+#===============================================================================
+# @brief    Kconfig file for WS63E Environment Gateway
+# Copyright (c) @CompanyNameMagicTag 2023-2023. All rights reserved.
+#===============================================================================
+
+comment "BearPi-Pico H3863 Wi-Fi + SLE gateway"
+    depends on SAMPLE_SUPPORT_WS63E_ENV_GATEWAY

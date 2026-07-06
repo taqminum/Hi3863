@@ -22,9 +22,18 @@ This is one repository with two firmware targets:
 | Target | Directory | Role | Serial |
 | --- | --- | --- | --- |
 | WS63E car | `src/application/samples/Farsight/ws63e_env_patrol_car` | Vehicle controller, sensors, OLED, motors, SLE Client, Wi-Fi fallback | COM6 |
-| BearPi gateway | `vendor/BearPi-Pico_H3863/products/ws63e_env_gateway` | Wi-Fi AP/gateway, SLE Server, phone App entry | COM5 |
+| BearPi gateway source copy | `vendor/BearPi-Pico_H3863/products/ws63e_env_gateway` | Versioned gateway source and handoff docs | COM5 |
+| BearPi gateway build workspace | `G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\ws63e_env_gateway` | Actual VSCode/DevEco BearPi build target | COM5 |
 
 Do not create a second repository. Do not merge the two firmware projects into one directory.
+
+The BearPi gateway must be compiled separately from the car firmware. The car build uses the `src` workspace; the BearPi build uses the official BearPi SDK workspace at:
+
+```text
+G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863
+```
+
+If editing the repository copy under `vendor/BearPi-Pico_H3863`, sync the changed product directory into `G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\ws63e_env_gateway` before building or flashing COM5.
 
 ## Hard Directory Rules
 
@@ -110,15 +119,16 @@ car telemetry JSON -> SLE -> BearPi cache -> Phone App
 The first useful gateway version must:
 
 1. Build inside `vendor/BearPi-Pico_H3863/products/ws63e_env_gateway`.
-2. Start from the official BearPi workflow and sample structure.
-3. Preserve SLE Server advertising name `sle_uart_server`.
-4. Accept car SLE Client connection.
-5. Receive telemetry JSON from the car over SLE.
-6. Cache the latest telemetry frame.
-7. Start a Wi-Fi AP for the phone App.
-8. Accept App control commands over Wi-Fi.
-9. Forward App commands to the car over SLE.
-10. Provide serial logs on COM5 for Wi-Fi state, SLE connection state, received App commands, forwarded SLE commands, and latest telemetry.
+2. Be synced into the actual BearPi SDK workspace before VSCode/DevEco build.
+3. Start from the official BearPi workflow and sample structure.
+4. Preserve SLE Server advertising name `sle_uart_server`.
+5. Accept car SLE Client connection.
+6. Receive telemetry JSON from the car over SLE.
+7. Cache the latest telemetry frame.
+8. Start a Wi-Fi AP for the phone App.
+9. Accept App control commands over Wi-Fi.
+10. Forward App commands to the car over SLE.
+11. Provide serial logs on COM5 for Wi-Fi state, SLE connection state, received App commands, forwarded SLE commands, and latest telemetry.
 
 Recommended BearPi Wi-Fi AP:
 

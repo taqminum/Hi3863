@@ -10,6 +10,7 @@ config ENABLE_ALL_PRODUCTS_SAMPLE
     select SAMPLE_SUPPORT_BLE_UART
     select SAMPLE_SUPPORT_SLE_UART
     select SAMPLE_SUPPORT_SLE_GETAWAY
+    select SAMPLE_SUPPORT_WS63E_ENV_GATEWAY
     help
         This option means enable all the sample of product, it is just for build.
 
@@ -59,3 +60,20 @@ menu "SLE GATEWAY Sample Configuration"
 endmenu
 endif
 
+config SAMPLE_SUPPORT_WS63E_ENV_GATEWAY
+    bool
+    prompt "Support WS63E Environment Gateway."
+    default n
+    depends on ENABLE_PRODUCTS_SAMPLE
+    help
+        This option means support the BearPi WS63E Environment Gateway.
+
+config SUPPORT_SLE_PERIPHERAL
+    bool
+    default y if SAMPLE_SUPPORT_WS63E_ENV_GATEWAY
+
+if SAMPLE_SUPPORT_WS63E_ENV_GATEWAY
+menu "WS63E Environment Gateway Configuration"
+    osource "application/samples/products/ws63e_env_gateway/Kconfig"
+endmenu
+endif
