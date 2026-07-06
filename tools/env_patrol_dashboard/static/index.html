@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WS63E Env Patrol Dashboard</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --ink: #17202a;
+        --muted: #687385;
+        --line: #dfe4ea;
+        --green: #1e9b6c;
+        --blue: #2f6fed;
+        --amber: #b76b00;
+        --red: #c5382f;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      }
+      header {
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 18px 20px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 650;
+      }
+      .sub {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 16px;
+        max-width: 1180px;
+        margin: 16px auto;
+        padding: 0 20px 20px;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .metric {
+        padding: 16px;
+      }
+      .label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .value {
+        margin-top: 8px;
+        font-size: 30px;
+        font-weight: 700;
+      }
+      .unit {
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .chart {
+        padding: 16px;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 320px;
+      }
+      .side {
+        display: grid;
+        gap: 16px;
+      }
+      .box {
+        padding: 16px;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: #e9f7f0;
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 650;
+      }
+      .status.warn {
+        background: #fff4df;
+        color: var(--amber);
+      }
+      .status.idle {
+        background: #eef1f5;
+        color: var(--muted);
+      }
+      .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: #eef1f5;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 650;
+      }
+      .badge.alert {
+        background: #fff1ef;
+        color: var(--red);
+      }
+      .badge.trend {
+        background: #edf4ff;
+        color: var(--blue);
+      }
+      ul {
+        margin: 12px 0 0;
+        padding-left: 18px;
+      }
+      li {
+        margin: 8px 0;
+        color: #313b49;
+        line-height: 1.45;
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: 92px 1fr;
+        gap: 8px;
+        margin-top: 12px;
+        font-size: 13px;
+      }
+      .kv span:nth-child(odd) {
+        color: var(--muted);
+      }
+      .commands {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .history {
+        margin-top: 12px;
+        font-size: 13px;
+        color: #313b49;
+      }
+      .history-item {
+        padding: 8px 0;
+        border-top: 1px solid var(--line);
+      }
+      button {
+        border: 1px solid var(--line);
+        background: #f9fafc;
+        border-radius: 6px;
+        min-height: 36px;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--blue);
+      }
+      code {
+        display: block;
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 6px;
+        background: #f2f4f7;
+        color: #263241;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      @media (max-width: 840px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <h1>WS63E 移动式环境监测巡检小车</h1>
+        <div class="sub">实时遥测、环境趋势与巡检辅助分析</div>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <div class="metrics">
+          <div class="panel metric">
+            <div class="label">温度</div>
+            <div class="value"><span id="temp">--</span> <span class="unit">C</span></div>
+          </div>
+          <div class="panel metric">
+            <div class="label">湿度</div>
+            <div class="value"><span id="humidity">--</span> <span class="unit">%RH</span></div>
+          </div>
+          <div class="panel metric">
+            <div class="label">光照</div>
+            <div class="value"><span id="light">--</span> <span class="unit">lx</span></div>
+          </div>
+          <div class="panel metric">
+            <div class="label">分析状态</div>
+            <div class="value"><span id="alerts">NORMAL</span> <span class="unit">flags</span></div>
+          </div>
+        </div>
+
+        <div class="panel chart">
+          <canvas id="chart" width="900" height="320"></canvas>
+        </div>
+      </section>
+
+      <aside class="side">
+        <div class="panel box">
+          <div id="level" class="status idle">等待数据</div>
+          <h2 id="summary">暂无遥测</h2>
+          <div id="alerts-row" class="badges"></div>
+          <div id="trends-row" class="badges"></div>
+          <ul id="analysis"></ul>
+        </div>
+
+        <div class="panel box">
+          <strong>小车状态</strong>
+          <div class="kv">
+            <span>采样序号</span><span id="seq">--</span>
+            <span>运动状态</span><span id="motion">STOP</span>
+            <span>巡检模式</span><span id="patrol">关闭</span>
+            <span>错误码</span><span id="err">0</span>
+          </div>
+        </div>
+
+        <div class="panel box">
+          <strong>遥控指令草稿</strong>
+          <div class="kv">
+            <span>待发命令</span><span id="pending">无</span>
+          </div>
+          <div class="commands">
+            <button data-motion="forward">前进</button>
+            <button data-motion="backward">后退</button>
+            <button data-motion="left">左转</button>
+            <button data-motion="right">右转</button>
+            <button data-motion="stop">停止</button>
+            <button data-motion="auto_start">Auto Start</button>
+            <button data-motion="auto_stop">Auto Stop</button>
+          </div>
+          <code id="command">等待选择指令</code>
+        </div>
+
+        <div class="panel box">
+          <strong>最近命令</strong>
+          <div id="command-history" class="history">暂无命令</div>
+        </div>
+      </aside>
+    </main>
+
+    <script>
+      const state = { samples: [] };
+      const motionNames = ["STOP", "FWD", "BACK", "LEFT", "RIGHT"];
+
+      function fmt(value, digits = 1) {
+        return Number.isFinite(value) ? value.toFixed(digits) : "--";
+      }
+
+      function update(snapshot) {
+        state.samples = snapshot.samples || [];
+        const latest = snapshot.latest;
+        if (latest) {
+          const alerts = [];
+          if (latest.temp_alert) alerts.push("TEMP");
+          if (latest.humi_alert) alerts.push("HUMI");
+          if (latest.light_alert) alerts.push("LIGHT");
+          document.querySelector("#temp").textContent = fmt(latest.temp);
+          document.querySelector("#humidity").textContent = fmt(latest.humidity);
+          document.querySelector("#light").textContent = fmt(latest.light);
+          document.querySelector("#alerts").textContent = alerts.length ? alerts.join("+") : "NORMAL";
+          document.querySelector("#seq").textContent = latest.seq;
+          document.querySelector("#motion").textContent = motionNames[latest.motion] || "UNKNOWN";
+          document.querySelector("#patrol").textContent = latest.patrol ? "开启" : "关闭";
+          document.querySelector("#err").textContent = latest.err;
+        }
+        const commands = snapshot.commands || [];
+        document.querySelector("#pending").textContent = commands.length
+          ? commands[commands.length - 1].cmd || "unknown"
+          : "无";
+        const history = document.querySelector("#command-history");
+        history.innerHTML = commands.length
+          ? commands
+              .slice(-6)
+              .reverse()
+              .map((item) => {
+                const speed = Object.prototype.hasOwnProperty.call(item, "speed") ? ` speed=${item.speed}` : "";
+                const duration = Object.prototype.hasOwnProperty.call(item, "duration_ms")
+                  ? ` duration=${item.duration_ms}`
+                  : "";
+                return `<div class="history-item">${item.cmd}${speed}${duration}</div>`;
+              })
+              .join("")
+          : "暂无命令";
+
+        const analysis = snapshot.analysis || { level: "idle", summary: "暂无遥测", items: [] };
+        const level = document.querySelector("#level");
+        level.className = `status ${analysis.level}`;
+        level.textContent = analysis.level === "warn" ? "需要关注" : analysis.level === "idle" ? "等待数据" : "状态正常";
+        document.querySelector("#summary").textContent = analysis.summary;
+        document.querySelector("#alerts-row").innerHTML = (analysis.alerts || []).length
+          ? analysis.alerts.map((item) => `<span class="badge alert">${item}</span>`).join("")
+          : '<span class="badge">NORMAL</span>';
+        document.querySelector("#trends-row").innerHTML = (analysis.trends || []).length
+          ? analysis.trends.map((item) => `<span class="badge trend">${item}</span>`).join("")
+          : '<span class="badge">趋势平稳</span>';
+        document.querySelector("#analysis").innerHTML = analysis.items.map((item) => `<li>${item}</li>`).join("");
+        drawChart();
+      }
+
+      function drawChart() {
+        const canvas = document.querySelector("#chart");
+        const ctx = canvas.getContext("2d");
+        const rect = canvas.getBoundingClientRect();
+        const scale = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(rect.width * scale);
+        canvas.height = Math.floor(320 * scale);
+        ctx.scale(scale, scale);
+
+        const width = rect.width;
+        const height = 320;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.strokeStyle = "#dfe4ea";
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i += 1) {
+          const y = 24 + i * 66;
+          ctx.beginPath();
+          ctx.moveTo(44, y);
+          ctx.lineTo(width - 18, y);
+          ctx.stroke();
+        }
+
+        const samples = state.samples.slice(-60);
+        if (samples.length < 2) {
+          ctx.fillStyle = "#687385";
+          ctx.font = "14px Segoe UI";
+          ctx.fillText("等待更多遥测数据", 48, 160);
+          return;
+        }
+
+        drawSeries(ctx, samples, "temp", "#c5382f", width, height, 0, 45, "温度");
+        drawSeries(ctx, samples, "humidity", "#2f6fed", width, height, 0, 100, "湿度");
+        drawSeries(ctx, samples, "light", "#1e9b6c", width, height, 0, 5000, "光照");
+      }
+
+      function drawSeries(ctx, samples, key, color, width, height, min, max, label) {
+        const left = 44;
+        const right = width - 18;
+        const top = 24;
+        const bottom = height - 26;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        samples.forEach((sample, index) => {
+          const x = left + ((right - left) * index) / (samples.length - 1);
+          const value = Math.max(min, Math.min(max, sample[key]));
+          const y = bottom - ((value - min) / (max - min)) * (bottom - top);
+          if (index === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.font = "12px Segoe UI";
+        ctx.fillText(label, right - 52, top + (key === "temp" ? 12 : key === "humidity" ? 30 : 48));
+      }
+
+      document.querySelectorAll("button[data-motion]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const cmd = button.dataset.motion;
+          const command =
+            cmd === "auto_start" || cmd === "auto_stop"
+              ? { cmd }
+              : { cmd, speed: cmd === "stop" ? 0 : 35, duration_ms: cmd === "stop" ? 0 : 600 };
+          document.querySelector("#pending").textContent = cmd;
+          document.querySelector("#command").textContent = JSON.stringify(command);
+          await fetch("/api/command", { method: "POST", body: JSON.stringify(command) });
+        });
+      });
+
+      fetch("/api/snapshot").then((res) => res.json()).then(update);
+      const events = new EventSource("/events");
+      events.onmessage = (event) => update(JSON.parse(event.data));
+      window.addEventListener("resize", drawChart);
+    </script>
+  </body>
+</html>

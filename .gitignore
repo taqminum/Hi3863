@@ -1,0 +1,39 @@
+# Local assistant / editor state
+.claude/
+.codex/
+.workbuddy/
+.vscode/
+src/.vscode/
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.bak
+*.swp
+Thumbs.db
+Desktop.ini
+
+# Build outputs and generated analysis
+src/output/
+src/analyzerJson/
+src/interim_binary/
+src/build.log
+
+# Bundled / generated toolchains are kept out of source control.
+# Install or restore them through HiSpark Studio / vendor tooling.
+src/tools/bin/
+
+# Python / cache artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Large package artifacts produced during firmware builds
+*.elf
+*.map
+*.lst
+*.asm
+*.fwpkg
+*.bin
+*.hex
