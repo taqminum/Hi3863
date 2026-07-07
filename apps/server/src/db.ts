@@ -301,21 +301,42 @@ export function ingestTelemetryBatch(payload: BaseStationTelemetry): { readings:
 
 export function createCommand(input: ControlInput & { deviceId: string; baseStationId: string; userId: string }): unknown {
   const id = `cmd-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const speed = input.action === "stop" ? 0 : Math.max(0, Math.min(100, Math.round(input.speed)));
-  const payload = toCarControlPayload({ action: input.action, speed });
+  const speed = input.action === "stop" || input.action === "drive" ? 0 : Math.max(0, Math.min(100, Math.round(input.speed)));
+  const payload = toCarControlPayload({
+    action: input.action,
+    speed,
+    left: input.left,
+    right: input.right,
+    durationMs: input.durationMs
+  });
+  if (input.action === "drive" || input.action === "stop") {
+    db.prepare(
+      `UPDATE control_commands
+       SET status = ?, cancelled_at = ?
+       WHERE device_id = ? AND base_station_id = ? AND action = ? AND status IN ('pending', 'pulled')`
+    ).run("cancelled", nowIso(), input.deviceId, input.baseStationId, "drive");
+  }
+  const expiresAt = input.action === "drive" ? new Date(Date.now() + 2000).toISOString() : null;
   db.prepare(
     `INSERT INTO control_commands
-     (id, device_id, base_station_id, action, speed, payload, status, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, input.deviceId, input.baseStationId, input.action, speed, payload, "pending", input.userId, nowIso());
+     (id, device_id, base_station_id, action, speed, payload, status, created_by, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, input.deviceId, input.baseStationId, input.action, speed, payload, "pending", input.userId, nowIso(), expiresAt);
   return getCommand(id);
 }
 
 export function pendingCommands(baseStationId: string): unknown[] {
   const pulledAt = nowIso();
+  db.prepare(
+    "UPDATE control_commands SET status = ?, cancelled_at = ? WHERE base_station_id = ? AND status = ? AND expires_at IS NOT NULL AND expires_at <= ?"
+  ).run("cancelled", pulledAt, baseStationId, "pending", pulledAt);
   const rows = db
-    .prepare("SELECT * FROM control_commands WHERE base_station_id = ? AND status = ? ORDER BY created_at ASC")
-    .all(baseStationId, "pending") as Array<{ id: string }>;
+    .prepare(
+      `SELECT * FROM control_commands
+       WHERE base_station_id = ? AND status = ? AND (expires_at IS NULL OR expires_at > ?)
+       ORDER BY created_at ASC`
+    )
+    .all(baseStationId, "pending", pulledAt) as Array<{ id: string }>;
   for (const row of rows) {
     db.prepare("UPDATE control_commands SET status = ?, pulled_at = ? WHERE id = ?").run("pulled", pulledAt, row.id);
   }

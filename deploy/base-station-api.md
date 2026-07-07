@@ -1,74 +1,146 @@
 # 星闪基站接入 API
 
-基站通过 SLE 与小车交换数据，通过云端 API 与平台同步。手机端/Web 端只连接云端，不直接连接小车局域网。
+基站通过 SLE 与小车交换数据，通过云端 API 与 Web/APK 平台同步。Web/APK 不直接依赖小车局域网；比赛演示时推荐链路为：小车 SLE -> 星闪基站 -> 云服务器 -> Web/APK。
 
 ## 基础信息
 
-- 云端 API：`https://www.rxcccccc.icu/ws63-api`
+- 云端 API：`https://rxcccccc.icu/ws63-api`
 - 本地调试：`http://127.0.0.1:8787`
-- 鉴权头：`X-Device-Key: <DEVICE_INGEST_KEY>`
+- 鉴权请求头：`X-Device-Key: <DEVICE_INGEST_KEY>`
 - 默认基站：`sle-base-001`
 - 默认小车：`ws63-car-001`
 
-## 上传遥测
+`DEVICE_INGEST_KEY` 只放在云端 `.env` 和本地交付说明中，不写入源码。
 
-`batchId` 用于幂等去重，基站重试同一批数据时保持相同 `batchId`。
+## 上传遥测数据
+
+请求：
 
 ```bash
-curl -X POST https://www.rxcccccc.icu/ws63-api/api/ingest/base-stations/sle-base-001/telemetry \
+curl -X POST https://rxcccccc.icu/ws63-api/api/ingest/base-stations/sle-base-001/telemetry \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
-  -d '{"batchId":"base-boot-001","sequence":1,"link":{"rssi":-52,"cachedCount":0,"mode":"sle"},"devices":[{"deviceId":"ws63-car-001","temperature":24.5,"humidity":53.2,"lightness":900,"gear":"D","direction":"forward","status":"moving"}]}'
+  -d '{"batchId":"sle-base-001-1001","sequence":1001,"link":{"rssi":-52,"cachedCount":0,"mode":"sle"},"devices":[{"deviceId":"ws63-car-001","temperature":24.5,"humidity":53.2,"lightness":900,"gear":"M","direction":"forward","status":"moving"}]}'
 ```
 
-首次写入返回 `201`，重复 `batchId` 返回 `200` 且 `duplicate: true`。
+字段说明：
+
+- `batchId`：幂等去重 id。基站重试同一批数据时必须保持相同 `batchId`。
+- `sequence`：基站递增序号，方便排查丢包。
+- `link.rssi`：小车与基站的 SLE RSSI。
+- `link.cachedCount`：基站弱网缓存条数。
+- `devices[].temperature/humidity/lightness`：小车传感器数据，使用真实单位，不使用 x10 编码。
+- `devices[].direction`：可用 `stop/forward/backward/left/right/drive`。
+- `devices[].status`：可用 `idle/moving/fault/offline`。
+
+首次写入返回 `201`；重复 `batchId` 返回 `200` 且 `duplicate: true`。
 
 ## 拉取待执行命令
 
+请求：
+
 ```bash
-curl https://www.rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/commands/pending \
+curl https://rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/commands/pending \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>"
 ```
 
-返回命令中的 `payload` 可直接映射到小车控制协议，例如：
+返回示例：
 
-- `FORWARD:60`
-- `BACKWARD:30`
-- `STOP:0`
+```json
+{
+  "commands": [
+    {
+      "id": "cmd-1720000000000-abcd",
+      "device_id": "ws63-car-001",
+      "base_station_id": "sle-base-001",
+      "action": "drive",
+      "speed": 0,
+      "payload": "DRIVE:70:0:350",
+      "status": "pulled",
+      "created_at": "2026-07-07T10:00:00.000Z",
+      "expires_at": "2026-07-07T10:00:02.000Z"
+    }
+  ]
+}
+```
 
-基站拉取后，云端会把命令状态从 `pending` 更新为 `pulled`。
+基站只需要把 `payload` 通过 SLE 发给小车。云端在基站拉取后会把命令状态从 `pending` 更新为 `pulled`。
+
+## 控制 payload
+
+旧方向协议继续保留：
+
+```text
+FORWARD:<speed>
+BACKWARD:<speed>
+STOP:0
+```
+
+新增连续摇杆协议：
+
+```text
+DRIVE:<left_percent>:<right_percent>:<duration_ms>
+```
+
+字段约束：
+
+- `left_percent`：左轮目标输出，范围 `-100..100`。正数前进，负数后退。
+- `right_percent`：右轮目标输出，范围 `-100..100`。正数前进，负数后退。
+- `duration_ms`：命令保持时长，范围 `0..3000`。Web/APK 当前默认 `350ms`。
+
+示例：
+
+```text
+DRIVE:70:70:350    # 直行前进
+DRIVE:-50:-50:350  # 后退
+DRIVE:70:0:350     # 右转弧线
+DRIVE:0:70:350     # 左转弧线
+DRIVE:70:-70:350   # 原地右转
+STOP:0             # 停车
+```
+
+队列规则：
+
+- `drive` 命令有效期约 `2s`，过期后不会再被基站拉取。
+- 新的 `drive` 会取消同一小车同一基站尚未完成的旧 `drive`，避免摇杆命令堆积。
+- `stop` 会取消旧 `drive` 并保留自身，确保松手停车优先。
+- `forward/backward/stop` 旧协议不依赖 `left/right` 字段。
 
 ## 回执命令状态
 
+请求：
+
 ```bash
-curl -X PATCH https://www.rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
+curl -X PATCH https://rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"status":"executed"}'
 ```
 
-`status` 可为 `sent`、`executed`、`failed`。失败时带上原因：
+失败时：
 
 ```bash
-curl -X PATCH https://www.rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
+curl -X PATCH https://rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"status":"failed","errorMessage":"SLE timeout"}'
 ```
 
+`status` 可选值：`sent`、`executed`、`failed`。如果基站暂时无法做两段回执，可以在成功发给小车后直接回 `executed`。
+
 ## 拉取巡检任务
 
 ```bash
-curl https://www.rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/patrol-tasks/pending \
+curl https://rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/patrol-tasks/pending \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>"
 ```
 
-基站拉取后，云端会把巡检任务状态从 `pending` 更新为 `pulled`。
+基站拉取后，云端会把任务状态从 `pending` 更新为 `pulled`。
 
 ## 回执巡检任务状态
 
 ```bash
-curl -X PATCH https://www.rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status \
+curl -X PATCH https://rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"status":"running"}'
@@ -86,7 +158,7 @@ curl -X PATCH https://www.rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status
 完成任务：
 
 ```bash
-curl -X PATCH https://www.rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status \
+curl -X PATCH https://rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"status":"completed"}'

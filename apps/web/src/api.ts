@@ -1,5 +1,5 @@
 export type Role = "admin" | "operator" | "viewer";
-export type Action = "forward" | "backward" | "stop";
+export type Action = "forward" | "backward" | "stop" | "drive";
 export type RiskLevel = "low" | "medium" | "high";
 
 export interface User {
@@ -187,7 +187,7 @@ export const api = {
   commands(token: string, deviceId: string) {
     return request<{ commands: ControlCommand[] }>(`/api/commands?deviceId=${encodeURIComponent(deviceId)}&limit=50`, token);
   },
-  command(token: string, body: { deviceId: string; baseStationId: string; action: Action; speed: number }) {
+  command(token: string, body: { deviceId: string; baseStationId: string; action: Action; speed: number; left?: number; right?: number; durationMs?: number }) {
     return request<{ command: ControlCommand }>("/api/commands", token, { method: "POST", body: JSON.stringify(body) });
   },
   patrolTasks(token: string) {

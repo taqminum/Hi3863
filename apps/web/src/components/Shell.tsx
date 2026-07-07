@@ -1,6 +1,7 @@
 import { Activity, Bot, Car, ClipboardList, Database, Gauge, History, ShieldCheck, TowerControl, Wrench } from "lucide-react";
 import type { ReactNode } from "react";
 import type { DeviceRecord, Role, User } from "../api";
+import type { ConnectionMode } from "../App";
 import { pageTitle, roleName } from "../utils";
 import type { Tab } from "../views";
 
@@ -21,9 +22,13 @@ interface ShellProps {
   devices: DeviceRecord[];
   selectedDeviceId: string;
   notice: string;
+  connectionMode: ConnectionMode;
+  localCarUrl: string;
   children: ReactNode;
   onTabChange: (tab: Tab) => void;
   onDeviceChange: (deviceId: string) => void;
+  onConnectionModeChange: (mode: ConnectionMode) => void;
+  onLocalCarUrlChange: (value: string) => void;
   onClearNotice: () => void;
   onLogout: () => void;
 }
@@ -68,9 +73,19 @@ export function Shell(props: ShellProps) {
             <h1>{pageTitle(props.tab)}</h1>
             <p>云端 API：rxcccccc.icu/ws63-api · 当前访问：{location.host || "localhost"}</p>
           </div>
-          <select value={props.selectedDeviceId} onChange={(event) => props.onDeviceChange(event.target.value)}>
-            {props.devices.map((device) => <option key={device.id} value={device.id}>{device.name}</option>)}
-          </select>
+          <div className="topbar-controls">
+            <select value={props.connectionMode} onChange={(event) => props.onConnectionModeChange(event.target.value as ConnectionMode)}>
+              <option value="cloud">云端基站</option>
+              <option value="local">本地小车</option>
+            </select>
+            {props.connectionMode === "local" ? (
+              <input value={props.localCarUrl} onChange={(event) => props.onLocalCarUrlChange(event.target.value)} aria-label="本地小车地址" />
+            ) : (
+              <select value={props.selectedDeviceId} onChange={(event) => props.onDeviceChange(event.target.value)}>
+                {props.devices.map((device) => <option key={device.id} value={device.id}>{device.name}</option>)}
+              </select>
+            )}
+          </div>
         </header>
         {props.notice && <button className="notice" onClick={props.onClearNotice}>{props.notice}</button>}
         {props.children}

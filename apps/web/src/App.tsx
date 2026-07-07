@@ -23,6 +23,21 @@ import { Login } from "./views/Login";
 import { Overview } from "./views/Overview";
 import { Patrol } from "./views/Patrol";
 import type { Tab } from "./views";
+import { localTelemetryToReading, type LocalTelemetrySample } from "./carProtocol";
+import { getLocalCarUrl, localCarApi, setLocalCarUrl } from "./localCarApi";
+
+export type ConnectionMode = "cloud" | "local";
+
+const localFallbackDevice: DeviceRecord = {
+  id: "ws63-car-001",
+  name: "WS63 本地小车",
+  base_station_id: "local-car-softap",
+  status: "online",
+  connection_mode: "wifi-softap",
+  direct_url: "http://192.168.5.1:8080",
+  last_seen: new Date(0).toISOString(),
+  remark: "本地 SoftAP 验收设备"
+};
 
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem("ws63-token"));
@@ -40,9 +55,25 @@ export function App() {
   const [audits, setAudits] = useState<AuditLog[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("ws63-car-001");
   const [notice, setNotice] = useState("");
+  const [connectionMode, setConnectionMode] = useState<ConnectionMode>(() => localStorage.getItem("ws63-connection-mode") === "local" ? "local" : "cloud");
+  const [localCarUrl, setLocalCarUrlState] = useState(getLocalCarUrl());
+  const [localSamples, setLocalSamples] = useState<LocalTelemetrySample[]>([]);
 
-  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0];
-  const latest = readings.at(-1);
+  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0] ?? (connectionMode === "local" ? localFallbackDevice : undefined);
+  const activeReadings = connectionMode === "local" ? localSamples.map(localTelemetryToReading) : readings;
+  const latest = activeReadings.at(-1);
+
+  function changeConnectionMode(mode: ConnectionMode) {
+    localStorage.setItem("ws63-connection-mode", mode);
+    setConnectionMode(mode);
+    if (mode === "local") setSelectedDeviceId(localFallbackDevice.id);
+    setNotice(mode === "local" ? "已切换到本地小车模式，请连接 WS63E_ENV_CAR 热点" : "已切换到云端模式");
+  }
+
+  function changeLocalCarUrl(value: string) {
+    setLocalCarUrl(value);
+    setLocalCarUrlState(value.replace(/\/$/, ""));
+  }
 
   function logout() {
     localStorage.removeItem("ws63-token");
@@ -64,7 +95,7 @@ export function App() {
   }
 
   async function refresh(nextToken = token, nextDeviceId = selectedDeviceId) {
-    if (!nextToken) return;
+    if (!nextToken || connectionMode === "local") return;
     const dashboard = await api.dashboard(nextToken, nextDeviceId);
     setDevices(dashboard.devices);
     setBaseStations(dashboard.baseStations);
@@ -79,10 +110,31 @@ export function App() {
 
   useEffect(() => {
     void guarded(() => refresh());
-  }, [token, selectedDeviceId, user?.role]);
+  }, [token, selectedDeviceId, user?.role, connectionMode]);
 
   useEffect(() => {
-    if (!token) return;
+    if (connectionMode !== "local") return;
+    let cancelled = false;
+    async function pollLocalCar() {
+      try {
+        const sample = await localCarApi.telemetry();
+        if (cancelled) return;
+        setLocalSamples((current) => [...current.slice(-119), sample]);
+        setNotice("");
+      } catch (error) {
+        if (!cancelled) setNotice(error instanceof Error ? `本地小车连接失败：${error.message}` : "本地小车连接失败");
+      }
+    }
+    void pollLocalCar();
+    const timer = window.setInterval(() => void pollLocalCar(), 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [connectionMode, localCarUrl]);
+
+  useEffect(() => {
+    if (!token || connectionMode === "local") return;
     const events = new EventSource(`${apiBaseUrl()}/api/events?token=${encodeURIComponent(token)}`);
     events.addEventListener("telemetry", (event) => {
       const payload = JSON.parse((event as MessageEvent).data).data as { readings: Reading[]; report: AgentReport };
@@ -95,7 +147,7 @@ export function App() {
     events.addEventListener("device", () => void guarded(() => refresh()));
     events.onerror = () => setNotice("实时连接暂时中断，浏览器会自动重连");
     return () => events.close();
-  }, [token, selectedDeviceId]);
+  }, [token, selectedDeviceId, connectionMode]);
 
   if (!token || !user) {
     return <Login onLogin={(nextToken, nextUser) => {
@@ -113,15 +165,19 @@ export function App() {
       devices={devices}
       selectedDeviceId={selectedDeviceId}
       notice={notice}
+      connectionMode={connectionMode}
+      localCarUrl={localCarUrl}
       onTabChange={setTab}
       onDeviceChange={setSelectedDeviceId}
+      onConnectionModeChange={changeConnectionMode}
+      onLocalCarUrlChange={changeLocalCarUrl}
       onClearNotice={() => setNotice("")}
       onLogout={logout}
     >
-      {tab === "overview" && <Overview latest={latest} reports={reports} devices={devices} baseStations={baseStations} commands={commands} tasks={tasks} />}
-      {tab === "control" && <Control token={token} device={selectedDevice} commands={commands} onNotice={setNotice} onRefresh={() => guarded(() => refresh())} />}
+      {tab === "overview" && <Overview latest={latest} readings={activeReadings} reports={reports} devices={devices} baseStations={baseStations} commands={commands} tasks={tasks} />}
+      {tab === "control" && <Control token={token} connectionMode={connectionMode} device={selectedDevice} commands={commands} onNotice={setNotice} onRefresh={() => guarded(() => refresh())} />}
       {tab === "patrol" && <Patrol token={token} device={selectedDevice} tasks={tasks} onRefresh={() => guarded(() => refresh())} onNotice={setNotice} />}
-      {tab === "history" && <HistoryView readings={readings} />}
+      {tab === "history" && <HistoryView readings={activeReadings} />}
       {tab === "agent" && <AgentView token={token} deviceId={selectedDeviceId} reports={reports} onRefresh={() => guarded(() => refresh())} />}
       {tab === "devices" && <DeviceView token={token} role={user.role} devices={devices} baseStations={baseStations} onNotice={setNotice} onRefresh={() => guarded(() => refresh())} />}
       {tab === "audit" && <AuditView audits={audits} />}

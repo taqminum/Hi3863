@@ -7,11 +7,20 @@ export type Permission =
   | "audit:read"
   | "user:manage";
 
-export type ControlAction = "forward" | "backward" | "stop";
+export type ControlAction = "forward" | "backward" | "stop" | "drive";
 
 export interface ControlInput {
   action: ControlAction;
   speed: number;
+  left?: number;
+  right?: number;
+  durationMs?: number;
+}
+
+export interface CommandValidationResult {
+  ok: boolean;
+  field?: string;
+  message?: string;
 }
 
 export interface PatrolStep {
@@ -87,9 +96,42 @@ export function clamp(value: number, min: number, max: number): number {
 }
 
 export function toCarControlPayload(input: ControlInput): string {
+  if (input.action === "drive") {
+    const left = clamp(Number(input.left ?? 0), -100, 100);
+    const right = clamp(Number(input.right ?? 0), -100, 100);
+    const durationMs = clamp(Number(input.durationMs ?? 350), 0, 3000);
+    if (left === 0 && right === 0) return "STOP:0";
+    return `DRIVE:${left}:${right}:${durationMs}`;
+  }
   if (input.action === "stop") return "STOP:0";
   const speed = clamp(input.speed, 0, 100);
   return input.action === "forward" ? `FORWARD:${speed}` : `BACKWARD:${speed}`;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+export function validateControlInput(input: ControlInput): CommandValidationResult {
+  if (!["forward", "backward", "stop", "drive"].includes(input.action)) {
+    return { ok: false, field: "action", message: "action must be forward, backward, stop or drive" };
+  }
+  if (input.action === "drive") {
+    if (!isFiniteNumber(input.left) || input.left < -100 || input.left > 100) {
+      return { ok: false, field: "left", message: "left must be a number from -100 to 100" };
+    }
+    if (!isFiniteNumber(input.right) || input.right < -100 || input.right > 100) {
+      return { ok: false, field: "right", message: "right must be a number from -100 to 100" };
+    }
+    if (!isFiniteNumber(input.durationMs) || input.durationMs < 0 || input.durationMs > 3000) {
+      return { ok: false, field: "durationMs", message: "durationMs must be a number from 0 to 3000" };
+    }
+    return { ok: true };
+  }
+  if (!isFiniteNumber(input.speed) || input.speed < 0 || input.speed > 100) {
+    return { ok: false, field: "speed", message: "speed must be a number from 0 to 100" };
+  }
+  return { ok: true };
 }
 
 export function parsePatrolSteps(value: unknown): PatrolStep[] {
