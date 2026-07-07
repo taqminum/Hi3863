@@ -77,7 +77,7 @@ G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863\application\samples\products\ws63e_env_ga
 固件包：G:\fbb_ws63_20260226\src\output\ws63\fwpkg\ws63-liteos-app\ws63-liteos-app_all.fwpkg
 ```
 
-BearPi-Pico H3863 工程按官方推荐工作流维护，并且必须与小车工程分开编译。当前已烧录并验证 SLE UART Server，后续需要在官方样例基础上改造成 Wi-Fi + SLE 网关。它当前广播的 SLE 名称为：
+BearPi-Pico H3863 工程按官方推荐工作流维护，并且必须与小车工程分开编译。当前已在官方样例基础上形成 Wi-Fi + SLE UDP 网关，广播的 SLE 名称为：
 
 ```text
 sle_uart_server
@@ -102,7 +102,7 @@ BearPi：G:\Hi3863_BEARPI\SDK\bearpi-pico_h3863
 
 BearPi 网关源码若先在仓库 `vendor` 副本中修改，需要同步到真实 SDK 的 `application\samples\products\ws63e_env_gateway` 后，再用 VSCode/DevEco 选择 `CONFIG_SAMPLE_SUPPORT_WS63E_ENV_GATEWAY=y` 编译和烧录 COM5。
 
-为了保证新工程完整和干净，后续编码智能体应遵守以下规则：
+为了保证新工程完整和干净，后续开发应遵守以下规则：
 
 1. BearPi 网关新建 `ws63e_env_gateway` 产品目录，从 `sle_uart` 或 `sle_gateway` 拷贝最小可运行骨架，再按需引入 Wi-Fi AP/HTTP 或 UDP 代码。
 2. 不在 `vendor\BearPi-Pico_H3863\products\sle_uart`、`sle_gateway`、`ble_uart` 原样例里直接做正式业务开发；这些目录作为官方参考和回退基线保留。
@@ -111,7 +111,7 @@ BearPi 网关源码若先在仓库 `vendor` 副本中修改，需要同步到真
 5. 小车端已有功能只做必要适配：保持 SLE Client、HTTP fallback、安全停止和短时动作策略，不为了 BearPi 网关重写车体逻辑。
 6. BearPi 端新工程必须有独立 README，写清楚编译选项、烧录串口、热点名称、接口路径、SLE 广播名和测试步骤。
 7. 每次交付至少验证两条链路：`BearPi COM5 -> SLE -> 小车` 和 `手机/电脑 -> BearPi Wi-Fi -> SLE -> 小车`。
-8. 若第一版 HTTP 服务实现成本过高，可先用 UDP 完成网关闭环，但目录、协议和 README 仍按正式工程标准整理。
+8. 当前第一版网关闭环使用 UDP，目录、协议和 README 按正式工程标准维护；HTTP 只作为后续可选增强。
 
 这样做的目标是：官方样例可回退，小车工程可独立编译，BearPi 网关工程可独立烧录，App 队友只需要面对一套稳定协议。
 
@@ -161,8 +161,8 @@ BearPi-Pico H3863 的定位：
 ```text
 小车 telemetry JSON -> SLE -> BearPi server -> COM5 串口打印
 BearPi COM5 输入控制命令 -> SLE -> 小车 client -> 电机控制
-后续：手机 App 控制命令 -> Wi-Fi -> BearPi gateway -> SLE -> 小车 client -> 电机控制
-后续：小车 telemetry JSON -> SLE -> BearPi gateway -> Wi-Fi -> 手机 App
+当前：手机 App 控制命令 -> Wi-Fi UDP -> BearPi gateway -> SLE -> 小车 client -> 电机控制
+当前：小车 telemetry JSON -> SLE -> BearPi gateway -> Wi-Fi UDP -> 手机 App
 ```
 
 ## 4. 系统链路总览
@@ -336,41 +336,44 @@ auto_stop
 
 正式方案中，BearPi-Pico H3863 作为 Wi-Fi 主控网关。手机 App 连接 BearPi，而不是直接连接小车。BearPi 接收 App 命令后，通过 SLE 发给小车；小车通过 SLE 回传遥测 JSON，BearPi 再通过 Wi-Fi 返回给 App。
 
-BearPi 建议作为 SoftAP：
+BearPi 当前作为 SoftAP，第一版 App 主链路使用 UDP：
 
 ```text
 SSID: WS63E_ENV_GATEWAY
 Password: 12345678
-Base URL: http://192.168.6.1:8080
+Gateway IP: 192.168.6.1
+UDP port: 8888
 ```
 
-建议接口：
+当前 UDP 入口：
 
-```http
-GET /api/data
-POST /api/control
-GET /api/status
+```text
+Phone/App -> 192.168.6.1:8888
+控制：forward / backward / left / right / stop / auto_start / auto_stop
+遥测：发送 GET 或 data，返回最近一帧 telemetry JSON
 ```
+
+HTTP API `GET /api/data`、`POST /api/control`、`GET /api/status` 保留为后续可选增强，不作为当前第一版交付前提。
 
 网关职责：
 
 1. 启动 Wi-Fi AP，等待手机 App 连接。
 2. 启动 SLE UART Server，等待小车 SLE Client 连接。
-3. 接收 App 的 `POST /api/control`，提取 JSON 或裸文本命令。
+3. 接收 App 的 UDP 控制报文，提取 JSON 或裸文本命令。
 4. 将控制命令原样或规范化后通过 SLE 写给小车。
 5. 接收小车通过 SLE 上报的 telemetry JSON。
-6. 缓存最近一帧 telemetry，供 App `GET /api/data` 查询。
-7. 在 `GET /api/status` 中返回网关状态，例如 Wi-Fi 已启动、SLE 是否已连接、最近遥测时间。
+6. 缓存最近一帧 telemetry，供 App 通过 UDP `GET` 或 `data` 查询。
+7. 在串口日志中输出 Wi-Fi、SLE 连接、UDP 收发和最近遥测状态，供调试确认。
 
 手机 App 需要做的事情：
 
 1. 连接 BearPi Wi-Fi：`WS63E_ENV_GATEWAY`。
-2. 每秒左右请求 `GET /api/data`，刷新环境数据和运动状态。
-3. 按下方向键时发送 `POST /api/control`。
+2. 每秒左右向 `192.168.6.1:8888` 发送 `GET` 或 `data`，刷新环境数据和运动状态。
+3. 按下方向键时向 `192.168.6.1:8888` 发送方向命令。
 4. 如果做“按住持续移动”，按住期间每 `300-500 ms` 重复发送同一方向命令。
 5. 松开方向键立即发送 `stop`。
 6. 使用 `auto_start` 和 `auto_stop` 控制预设开环巡检。
-7. 在页面或 App 状态区显示 SLE 连接状态，避免小车未连接时误以为控制失败。
+7. 根据 UDP 遥测响应和后续状态字段显示网关/SLE 状态，避免小车未连接时误以为控制失败。
 
 注意：
 
@@ -456,14 +459,14 @@ BearPi 到小车：
 
 ### 8.3 网关化改造目标
 
-BearPi 后续要从“串口 SLE Server”升级为“Wi-Fi + SLE 网关”：
+BearPi 已经从“串口 SLE Server”升级为第一版“Wi-Fi + SLE UDP 网关”：
 
 ```text
-App HTTP/UDP input -> BearPi command parser -> SLE write -> 小车
-小车 SLE telemetry -> BearPi latest-data cache -> HTTP response -> App
+App UDP input -> BearPi command parser -> SLE notify -> 小车
+小车 SLE telemetry -> BearPi latest-data cache -> UDP response -> App
 ```
 
-建议优先使用 HTTP，因为 App 队友实现成本最低；如果 BearPi HTTP 服务移植成本偏高，再考虑 UDP 作为第一版网关协议。
+当前交付基线固定为 UDP：`192.168.6.1:8888`。HTTP 仍可作为后续增强，但不再是当前主链路或验收阻塞项。
 
 ### 8.4 当前限制
 
@@ -599,13 +602,12 @@ BearPi-Pico H3863 具备 BLE 能力，本地工程中也存在 `products/ble_uar
 
 ### 12.1 BearPi Wi-Fi + SLE 网关
 
-- 基于官方推荐工作流改造 BearPi 工程。
-- 复用当前已验证的 SLE UART Server 名称：`sle_uart_server`。
-- 增加 Wi-Fi AP，建议 SSID 为 `WS63E_ENV_GATEWAY`。
-- 优先实现 HTTP 接口：`GET /api/data`、`POST /api/control`、`GET /api/status`。
-- 将 App 控制命令转发到 SLE。
-- 将小车 telemetry JSON 缓存在 BearPi，供 App 查询。
-- 保留 COM5 串口日志和裸文本调试命令。
+- 当前第一版 UDP 网关已作为交付基线：`WS63E_ENV_GATEWAY` / `192.168.6.1:8888`。
+- 保持 SLE UART Server 名称：`sle_uart_server`。
+- 保持 App 控制命令通过 UDP 进入 BearPi，再通过 SLE notify 下发到小车。
+- 保持小车 telemetry JSON 在 BearPi 缓存，并通过 UDP `GET` 或 `data` 返回给 App。
+- 保留 COM5 串口日志和裸文本调试能力。
+- HTTP 接口 `GET /api/data`、`POST /api/control`、`GET /api/status` 仅作为后续可选增强。
 
 ### 12.2 小车固件定版
 
@@ -620,8 +622,9 @@ BearPi-Pico H3863 具备 BLE 能力，本地工程中也存在 `products/ble_uar
 
 - 向 App 队友提供 `CONTROL.md`、本文件第 7 节和第 8 节。
 - App 优先对接 BearPi Wi-Fi 网关，而不是小车 Wi-Fi。
+- App 当前对接 UDP：`192.168.6.1:8888`。
 - App 按住方向键时周期发命令，松开发 `stop`。
-- App 显示 BearPi 网关状态和 SLE 连接状态。
+- App 通过 telemetry 响应显示环境数据和运动状态；网关/SLE 状态可先用串口确认，后续再扩展状态字段。
 - App 保留“调试模式”配置项，可手动切换到小车 fallback 地址 `http://192.168.5.1:8080`。
 
 ### 12.4 BLE 可选增强

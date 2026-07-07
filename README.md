@@ -75,6 +75,19 @@ Telemetry example:
 {"seq":1142,"temp_x10":304,"humi_x10":641,"light_x10":2958,"temp_alert":0,"humi_alert":0,"light_alert":0,"motion":0,"patrol":0,"err":0}
 ```
 
+## BearPi App Gateway
+
+The current BearPi gateway uses UDP as the first working App transport. HTTP is a future enhancement, not the current main path.
+
+```text
+SSID: WS63E_ENV_GATEWAY
+Password: 12345678
+Gateway IP: 192.168.6.1
+UDP port: 8888
+```
+
+Send `forward`, `backward`, `left`, `right`, `stop`, `auto_start`, `auto_stop`, or the same command as JSON to `192.168.6.1:8888`. Send `GET` or `data` to poll the latest telemetry JSON.
+
 ## Build Notes
 
 Car project entry:
@@ -106,6 +119,5 @@ Start here:
 
 - `docs/ws63e_env_patrol_technical_chain.md`
 - `docs/repository_management.md`
-- `docs/coding_agent_constraints.md`
 - `src/application/samples/Farsight/ws63e_env_patrol_car/comm/CONTROL.md`
 - `src/application/samples/Farsight/ws63e_env_patrol_car/comm/PROTOCOL.md`
