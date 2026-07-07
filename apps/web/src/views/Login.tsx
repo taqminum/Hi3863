@@ -9,7 +9,7 @@ export function Login({ onLogin }: { onLogin: (token: string, user: User) => voi
   return (
     <main className="login">
       <section>
-        <div className="brand login-brand"><Car size={30} /><strong>WS63 环境巡检平台</strong></div>
+        <div className="brand login-brand"><Car size={30} /><strong>WS63E 环境巡检平台</strong></div>
         <form onSubmit={async (event) => {
           event.preventDefault();
           setError("");

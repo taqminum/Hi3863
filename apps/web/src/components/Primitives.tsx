@@ -32,7 +32,7 @@ export function Chart({ readings, field, color, label }: { readings: Reading[]; 
   return (
     <div className="chart">
       <div><span>{label}</span><b>{points.at(-1)?.toFixed(1) ?? "--"}</b></div>
-      <svg viewBox="0 0 100 40" preserveAspectRatio="none"><path d={d} stroke={color} /></svg>
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-label={`${label}趋势`}><path d={d} stroke={color} /></svg>
     </div>
   );
 }

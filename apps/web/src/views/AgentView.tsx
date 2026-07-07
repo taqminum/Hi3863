@@ -17,10 +17,14 @@ export function AgentView({
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>Agent 分析记录</h2>
+        <div>
+          <h2>Agent 分析记录</h2>
+          <p className="muted">规则引擎根据温湿度、RSSI 和弱网缓存生成演示可解释报告。</p>
+        </div>
         <button onClick={async () => { await api.createReport(token, deviceId); await onRefresh(); }}>重新分析</button>
       </div>
       <div className="report-list">
+        {reports.length === 0 && <p className="muted">暂无分析报告。</p>}
         {reports.map((report, index) => {
           const normalized = normalizeReport(report);
           return (

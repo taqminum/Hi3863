@@ -121,7 +121,7 @@ export function Control({
         <div className="panel-head">
           <div>
             <h2>连续摇杆遥控</h2>
-            <p className="muted">Web 与 APK 使用同一套控制协议，云端通过基站下发到小车。</p>
+            <p className="muted">Web 与 APK 使用同一套控制协议，云端模式通过基站转发到小车。</p>
           </div>
           <button className="icon-command" onClick={() => stop()} title="立即停车"><Square />停车</button>
         </div>
@@ -133,7 +133,7 @@ export function Control({
 
         <div
           ref={padRef}
-          className="joystick-pad"
+          className={sending ? "joystick-pad sending" : "joystick-pad"}
           onPointerDown={(event) => {
             activePointer.current = event.pointerId;
             event.currentTarget.setPointerCapture(event.pointerId);
@@ -163,6 +163,7 @@ export function Control({
       <div className="panel">
         <h2>命令历史</h2>
         <div className="table">
+          {commands.length === 0 && <p className="muted">暂无命令。</p>}
           {commands.map((command) => (
             <div className="tr" key={command.id}>
               <span>{command.payload}</span>

@@ -41,14 +41,16 @@ export function DeviceView({
     <section className="split">
       <div className="panel">
         <h2>车辆</h2>
+        {devices.length === 0 && <p className="muted">暂无车辆数据。</p>}
         {devices.map((device) => (
-          <StatusRow key={device.id} name={device.name} status={`${device.status} · ${device.connection_mode}`} time={device.last_seen} />
+          <StatusRow key={device.id} name={device.name} status={`${device.status} / ${device.connection_mode}`} time={device.last_seen} />
         ))}
       </div>
       <div className="panel">
         <h2>星闪基站</h2>
+        {baseStations.length === 0 && <p className="muted">暂无基站数据。</p>}
         {baseStations.map((base) => (
-          <StatusRow key={base.id} name={base.name} status={`${base.status} · RSSI ${base.last_rssi ?? "--"} dBm · 缓存 ${base.cached_count ?? 0}`} time={base.last_heartbeat} />
+          <StatusRow key={base.id} name={base.name} status={`${base.status} / RSSI ${base.last_rssi ?? "--"} dBm / 缓存 ${base.cached_count ?? 0}`} time={base.last_heartbeat} />
         ))}
       </div>
       {role === "admin" && editing && (

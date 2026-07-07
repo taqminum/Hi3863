@@ -67,7 +67,7 @@ export function App() {
     localStorage.setItem("ws63-connection-mode", mode);
     setConnectionMode(mode);
     if (mode === "local") setSelectedDeviceId(localFallbackDevice.id);
-    setNotice(mode === "local" ? "已切换到本地小车模式，请连接 WS63E_ENV_CAR 热点" : "已切换到云端模式");
+    setNotice(mode === "local" ? "已切换到本地小车模式，请连接 WS63E_ENV_CAR 热点" : "已切换到云端基站模式");
   }
 
   function changeLocalCarUrl(value: string) {

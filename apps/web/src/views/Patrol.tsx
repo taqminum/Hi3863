@@ -38,11 +38,12 @@ export function Patrol({
       <div className="panel">
         <h2>新建任务</h2>
         <label className="field">任务名<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-        <button onClick={create}>创建预设巡检</button>
+        <button onClick={create} disabled={!device}>创建预设巡检</button>
       </div>
       <div className="panel">
         <h2>任务队列</h2>
         <div className="table">
+          {tasks.length === 0 && <p className="muted">暂无巡检任务。</p>}
           {tasks.map((task) => (
             <div className="tr task-row" key={task.id}>
               <span>{task.name}</span>
