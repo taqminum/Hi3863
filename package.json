@@ -1,0 +1,20 @@
+{
+  "name": "ws63-inspection-platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/server",
+    "dev:server": "npm run dev --workspace apps/server",
+    "dev:web": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspaces",
+    "build:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/build-apk.ps1",
+    "check:app-parity": "node deploy/check-app-parity.mjs",
+    "test": "npm run test --workspaces",
+    "start": "npm run start --workspace apps/server"
+  }
+}
