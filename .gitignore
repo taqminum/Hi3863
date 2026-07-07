@@ -2,8 +2,10 @@
 .claude/
 .codex/
 .workbuddy/
+.worktrees/
 .vscode/
 src/.vscode/
+.github/modernize/
 
 # Logs and temporary files
 logs/
@@ -13,6 +15,9 @@ logs/
 *.swp
 Thumbs.db
 Desktop.ini
+app-screen*.png
+emulator-*.png
+tmp-*.log
 
 # Build outputs and generated analysis
 src/output/
@@ -37,3 +42,39 @@ __pycache__/
 *.fwpkg
 *.bin
 *.hex
+
+# Node / Web / API workspace artifacts
+node_modules/
+apps/**/node_modules/
+apps/**/dist/
+*.tsbuildinfo
+
+# Runtime configuration and local databases
+.env
+apps/**/.env
+data/
+apps/server/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Capacitor / Android generated output
+apps/web/android/.gradle/
+apps/web/android/build/
+apps/web/android/app/build/
+apps/web/android/local.properties
+
+# Packaged archives and local transfer files
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+
+# Local-only contest and original SDK material.
+# The remote branch keeps firmware sources at root `src/` and `vendor/`.
+fb_code/
+ws63_docs/
+参赛资料/
+作品简介.md

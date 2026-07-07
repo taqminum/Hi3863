@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">WS63 环境巡检平台</string>
+    <string name="title_activity_main">WS63 环境巡检平台</string>
+    <string name="package_name">icu.rxcccccc.ws63patrol</string>
+    <string name="custom_url_scheme">icu.rxcccccc.ws63patrol</string>
+</resources>

@@ -1,0 +1,9 @@
+{
+  "name": "WS63 环境巡检平台",
+  "short_name": "WS63巡检",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1720",
+  "theme_color": "#0f1720",
+  "icons": []
+}
