@@ -1,6 +1,7 @@
-import { RotateCcw, Square } from "lucide-react";
+import { Crosshair, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type ControlCommand, type DeviceRecord } from "../api";
+import type { ConnectionMode } from "../App";
 import {
   buildCloudControlBody,
   buildCompatControlPayload,
@@ -14,9 +15,8 @@ import {
   type JoystickVector,
   type WheelOutput
 } from "../carProtocol";
-import type { ConnectionMode } from "../App";
 import { localCarApi } from "../localCarApi";
-import { formatTime } from "../utils";
+import { compactTime } from "../viewModels";
 
 function vectorFromPointer(element: HTMLDivElement, clientX: number, clientY: number): JoystickVector {
   const rect = element.getBoundingClientRect();
@@ -58,7 +58,7 @@ export function Control({
   const wheels = useMemo(() => joystickToDifferential(vector, { maxPercent }), [vector, maxPercent]);
   const speed = commandSpeedFromJoystick(vector, maxPercent);
   const legacyAction = joystickToLegacyCommand(vector);
-  const knobStyle = { transform: `translate(${vector.x * 72}px, ${-vector.y * 72}px)` };
+  const knobStyle = { transform: `translate(${vector.x * 40}px, ${-vector.y * 40}px)` };
 
   async function sendDrive(nextVector: JoystickVector, force = false) {
     if (!device) return;
@@ -116,61 +116,61 @@ export function Control({
   }, [device?.id, device?.base_station_id, connectionMode, maxPercent]);
 
   return (
-    <section className="split control-layout">
-      <div className="panel control-panel">
-        <div className="panel-head">
-          <div>
-            <h2>连续摇杆遥控</h2>
-            <p className="muted">Web 与 APK 使用同一套控制协议，云端模式通过基站转发到小车。</p>
+    <section id="view-control" className="view-section active">
+      <div className="control-layout">
+        <div className="joystick-panel">
+          <div
+            ref={padRef}
+            className="joystick-base"
+            onPointerDown={(event) => {
+              activePointer.current = event.pointerId;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              updateFromPointer(event.clientX, event.clientY, true);
+            }}
+            onPointerMove={(event) => {
+              if (activePointer.current !== event.pointerId) return;
+              updateFromPointer(event.clientX, event.clientY);
+            }}
+            onPointerUp={() => stop()}
+            onPointerCancel={() => stop()}
+            role="application"
+            aria-label="小车连续摇杆"
+          >
+            <div className={sending ? "joystick-knob active" : "joystick-knob"} style={knobStyle} />
           </div>
-          <button className="icon-command" onClick={() => stop()} title="立即停车"><Square />停车</button>
+          <button className="btn-stop" onClick={() => stop()}><Square width={16} height={16} />立即停车</button>
+          <div className="drive-readout">
+            <span>摇杆 X {vector.x.toFixed(2)}</span>
+            <span>摇杆 Y {vector.y.toFixed(2)}</span>
+            <span>{wheelSummary(wheels)}</span>
+          </div>
         </div>
 
-        <div className="speed-row">
-          <span>电机上限 {maxPercent}%</span>
-          <input type="range" min="20" max="100" value={maxPercent} onChange={(event) => setMaxPercent(Number(event.target.value))} />
+        <div className="center-console">
+          <div className="camera-feed">
+            <div className="camera-badge"><div className="status-dot" />CAM-WS-01 直播流</div>
+            <div className="camera-hud"><Crosshair width={36} height={36} /></div>
+            <div className="camera-overlay"><span>LAT: {connectionMode === "cloud" ? "云端队列" : "本地直连"}</span><span>{device?.name ?? "未选择设备"}</span></div>
+          </div>
+          <div className="command-log">
+            <div className="cmd-line"><span className="cmd-time">[{new Date().toLocaleTimeString("zh-CN", { hour12: false })}]</span><span className="cmd-info">系统: 横屏遥控控制舱已就绪</span></div>
+            <div className="cmd-line"><span className="cmd-time">LIVE</span><span className="cmd-info">方向: {legacyAction} / 速度 {speed}% / 上限 {maxPercent}%</span></div>
+            {commands.slice(0, 6).map((command) => (
+              <div className="cmd-line" key={command.id}>
+                <span className="cmd-time">[{compactTime(command.created_at)}]</span>
+                <span className={command.status === "failed" ? "cmd-info danger" : "cmd-info"}>{command.payload} · {command.status}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div
-          ref={padRef}
-          className={sending ? "joystick-pad sending" : "joystick-pad"}
-          onPointerDown={(event) => {
-            activePointer.current = event.pointerId;
-            event.currentTarget.setPointerCapture(event.pointerId);
-            updateFromPointer(event.clientX, event.clientY, true);
-          }}
-          onPointerMove={(event) => {
-            if (activePointer.current !== event.pointerId) return;
-            updateFromPointer(event.clientX, event.clientY);
-          }}
-          onPointerUp={() => stop()}
-          onPointerCancel={() => stop()}
-          role="application"
-          aria-label="小车连续摇杆"
-        >
-          <div className="joystick-axis horizontal" />
-          <div className="joystick-axis vertical" />
-          <div className="joystick-knob" style={knobStyle}><RotateCcw /></div>
-        </div>
-
-        <div className="drive-readout">
-          <span>摇杆 x {vector.x.toFixed(2)} / y {vector.y.toFixed(2)}</span>
-          <span>{wheelSummary(wheels)}</span>
-          <span>兼容方向 {legacyAction} / 速度 {speed}%</span>
-        </div>
-      </div>
-
-      <div className="panel">
-        <h2>命令历史</h2>
-        <div className="table">
-          {commands.length === 0 && <p className="muted">暂无命令。</p>}
-          {commands.map((command) => (
-            <div className="tr" key={command.id}>
-              <span>{command.payload}</span>
-              <b>{command.status}</b>
-              <time>{formatTime(command.acknowledged_at ?? command.created_at)}</time>
-            </div>
-          ))}
+        <div className="speed-panel">
+          <div className="speed-value-display">{(maxPercent / 100).toFixed(1)} <span>m/s</span></div>
+          <div className="v-slider-wrapper">
+            <div className="v-slider-track"><div className="v-slider-fill" style={{ height: `${maxPercent}%` }} /></div>
+            <input className="v-slider-input" type="range" min="20" max="100" value={maxPercent} onChange={(event) => setMaxPercent(Number(event.target.value))} aria-label="速度限制" />
+          </div>
+          <div className="speed-label">速度限制</div>
         </div>
       </div>
     </section>

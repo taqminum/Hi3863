@@ -1,1 +1,1 @@
-export type Tab = "overview" | "control" | "patrol" | "history" | "agent" | "devices" | "audit" | "debug";
+export type Tab = "overview" | "control" | "tasks" | "data" | "manage";

@@ -6,7 +6,8 @@ const expected = {
   appId: "icu.rxcccccc.ws63patrol",
   appName: "WS63 环境巡检平台",
   apiBaseUrl: "https://www.rxcccccc.icu/ws63-api",
-  tabs: ["总览", "遥控", "巡检", "趋势", "Agent", "设备", "审计", "验收"]
+  tabs: ["总览", "遥控", "巡检", "数据", "管理"],
+  openDesignClasses: ["device-container", "top-bar", "side-nav", "view-overview", "view-control", "view-tasks", "view-data", "view-manage"]
 };
 
 function read(relativePath) {
@@ -43,11 +44,27 @@ check("Android native app label", () => {
   assertContains(file, content, `<string name="title_activity_main">${expected.appName}</string>`);
 });
 
-check("Web navigation exposes all acceptance tabs", () => {
+check("Web navigation exposes Open Design acceptance tabs", () => {
   const file = "apps/web/src/components/Shell.tsx";
   const content = read(file);
   for (const tab of expected.tabs) {
     assertContains(file, content, tab);
+  }
+});
+
+check("Web uses Open Design shell classes", () => {
+  const files = [
+    "apps/web/src/components/Shell.tsx",
+    "apps/web/src/views/Overview.tsx",
+    "apps/web/src/views/Control.tsx",
+    "apps/web/src/views/Patrol.tsx",
+    "apps/web/src/views/HistoryView.tsx",
+    "apps/web/src/views/DeviceView.tsx",
+    "apps/web/src/styles.css"
+  ];
+  const content = files.map(read).join("\n");
+  for (const className of expected.openDesignClasses) {
+    assertContains("Open Design web UI", content, className);
   }
 });
 

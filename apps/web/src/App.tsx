@@ -13,9 +13,6 @@ import {
   type User
 } from "./api";
 import { Shell } from "./components/Shell";
-import { AgentView } from "./views/AgentView";
-import { AuditView } from "./views/AuditView";
-import { BackendDebug } from "./views/BackendDebug";
 import { Control } from "./views/Control";
 import { DeviceView } from "./views/DeviceView";
 import { HistoryView } from "./views/HistoryView";
@@ -25,6 +22,7 @@ import { Patrol } from "./views/Patrol";
 import type { Tab } from "./views";
 import { localTelemetryToReading, type LocalTelemetrySample } from "./carProtocol";
 import { getLocalCarUrl, localCarApi, setLocalCarUrl } from "./localCarApi";
+import { buildDashboardViewModel } from "./viewModels";
 
 export type ConnectionMode = "cloud" | "local";
 
@@ -61,7 +59,6 @@ export function App() {
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0] ?? (connectionMode === "local" ? localFallbackDevice : undefined);
   const activeReadings = connectionMode === "local" ? localSamples.map(localTelemetryToReading) : readings;
-  const latest = activeReadings.at(-1);
 
   function changeConnectionMode(mode: ConnectionMode) {
     localStorage.setItem("ws63-connection-mode", mode);
@@ -158,6 +155,19 @@ export function App() {
     }} />;
   }
 
+  const model = buildDashboardViewModel({
+    user,
+    connectionMode,
+    selectedDevice,
+    devices,
+    baseStations,
+    readings: activeReadings,
+    commands,
+    tasks,
+    reports,
+    audits
+  });
+
   return (
     <Shell
       user={user}
@@ -174,14 +184,11 @@ export function App() {
       onClearNotice={() => setNotice("")}
       onLogout={logout}
     >
-      {tab === "overview" && <Overview latest={latest} readings={activeReadings} reports={reports} devices={devices} baseStations={baseStations} commands={commands} tasks={tasks} />}
+      {tab === "overview" && <Overview model={model} />}
       {tab === "control" && <Control token={token} connectionMode={connectionMode} device={selectedDevice} commands={commands} onNotice={setNotice} onRefresh={() => guarded(() => refresh())} />}
-      {tab === "patrol" && <Patrol token={token} device={selectedDevice} tasks={tasks} onRefresh={() => guarded(() => refresh())} onNotice={setNotice} />}
-      {tab === "history" && <HistoryView readings={activeReadings} />}
-      {tab === "agent" && <AgentView token={token} deviceId={selectedDeviceId} reports={reports} onRefresh={() => guarded(() => refresh())} />}
-      {tab === "devices" && <DeviceView token={token} role={user.role} devices={devices} baseStations={baseStations} onNotice={setNotice} onRefresh={() => guarded(() => refresh())} />}
-      {tab === "audit" && <AuditView audits={audits} />}
-      {tab === "debug" && <BackendDebug token={token} device={selectedDevice} onNotice={setNotice} onRefresh={() => guarded(() => refresh())} />}
+      {tab === "tasks" && <Patrol token={token} role={user.role} device={selectedDevice} tasks={tasks} model={model} onRefresh={() => guarded(() => refresh())} onNotice={setNotice} />}
+      {tab === "data" && <HistoryView token={token} deviceId={selectedDeviceId} model={model} onRefresh={() => guarded(() => refresh())} />}
+      {tab === "manage" && <DeviceView token={token} model={model} onNotice={setNotice} onRefresh={() => guarded(() => refresh())} />}
     </Shell>
   );
 }

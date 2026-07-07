@@ -14,17 +14,23 @@ export function pageTitle(tab: Tab): string {
   return {
     overview: "运行总览",
     control: "实时遥控",
-    patrol: "巡检任务",
-    history: "历史趋势",
-    agent: "Agent 分析",
-    devices: "设备与基站",
-    audit: "权限与审计",
-    debug: "后端验收"
+    tasks: "巡检任务",
+    data: "数据分析",
+    manage: "设备管理"
   }[tab];
 }
 
 export function normalizeReport(report?: AgentReport): { level: RiskLevel; summary: string; suggestions: string[]; time: string } {
-  const suggestions = report?.suggestions ?? (report?.suggestions_json ? JSON.parse(report.suggestions_json) as string[] : []);
+  let suggestions: string[] = [];
+  if (report?.suggestions) {
+    suggestions = report.suggestions;
+  } else if (report?.suggestions_json) {
+    try {
+      suggestions = JSON.parse(report.suggestions_json) as string[];
+    } catch {
+      suggestions = [];
+    }
+  }
   return {
     level: report?.riskLevel ?? report?.risk_level ?? "low",
     summary: report?.summary ?? "等待 Agent 分析结果",

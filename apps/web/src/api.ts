@@ -128,14 +128,19 @@ export const exportUrls = {
 };
 
 async function request<T>(path: string, token: string | null, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers
+      }
+    });
+  } catch {
+    throw new ApiError("无法连接云端 API，请检查网络、域名或服务器状态", 0);
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new ApiError(data.error ?? data.message ?? `HTTP ${response.status}`, response.status);
@@ -144,14 +149,19 @@ async function request<T>(path: string, token: string | null, options: RequestIn
 }
 
 async function requestText(path: string, token: string | null, options: RequestInit = {}): Promise<string> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
-    ...options,
-    headers: {
-      Accept: "text/plain, text/csv, application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      ...options,
+      headers: {
+        Accept: "text/plain, text/csv, application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers
+      }
+    });
+  } catch {
+    throw new ApiError("无法连接云端 API，请检查网络、域名或服务器状态", 0);
+  }
   const data = await response.text();
   if (!response.ok) {
     throw new ApiError(data || `HTTP ${response.status}`, response.status);
