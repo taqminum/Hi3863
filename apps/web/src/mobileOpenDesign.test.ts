@@ -19,6 +19,15 @@ test("injects real interaction bridge for joystick repeat, task creation and cha
   assert.match(result, /window\.Chart\.getChart/);
 });
 
+test("injects touch isolation before Open Design scripts and routes joystick touches by role", () => {
+  const html = "<html><head><script src=\"https://unpkg.com/lucide@latest\"></script></head><body></body></html>";
+  const result = buildMobileOpenDesignSrcDoc(html);
+  assert.ok(result.indexOf("ws63-mobile-touch-isolation") < result.indexOf("https://unpkg.com/lucide@latest"));
+  assert.match(result, /activeTouchIds = \{ joystick: null, speed: null \}/);
+  assert.match(result, /roleForWindowTouchListener/);
+  assert.match(result, /window\.__ws63TouchIsolation\?\.pick\(event, "joystick"\)/);
+});
+
 test("locks control view scrolling through active view CSS", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
   assert.match(result, /body\[data-active-view="view-control"\] \.content-area/);
@@ -27,7 +36,7 @@ test("locks control view scrolling through active view CSS", () => {
 
 test("reserves permanent right system area and moves speed value upward", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
-  assert.match(result, /--ws63-system-right-reserve: max\(96px, env\(safe-area-inset-right\)\)/);
+  assert.match(result, /--ws63-system-right-reserve: clamp\(72px, env\(safe-area-inset-right, 96px\), 128px\)/);
   assert.match(result, /width: calc\(100vw - var\(--ws63-system-right-reserve\)\) !important/);
   assert.match(result, /body\[data-active-view="view-control"\] \.speed-value-display/);
   assert.match(result, /transform: translateY\(-12px\)/);

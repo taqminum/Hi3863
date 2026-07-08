@@ -74,7 +74,7 @@ html, body {
 }
 body {
   background: #000;
-  --ws63-system-right-reserve: max(96px, env(safe-area-inset-right));
+  --ws63-system-right-reserve: clamp(72px, env(safe-area-inset-right, 96px), 128px);
   justify-content: flex-start !important;
   align-items: stretch !important;
   padding-right: var(--ws63-system-right-reserve) !important;
@@ -109,6 +109,120 @@ body[data-active-view="view-control"] .speed-value-display {
   transform: translateY(-12px);
 }
 </style>`;
+
+const touchIsolationScript = `<script id="ws63-mobile-touch-isolation">
+(() => {
+  const originalAddEventListener = EventTarget.prototype.addEventListener;
+  const activeTouchIds = { joystick: null, speed: null };
+  const windowListenerCounts = { touchmove: 0, touchend: 0 };
+
+  function roleForNode(node) {
+    if (!node || !node.closest) return null;
+    if (node.closest("#joystick-base")) return "joystick";
+    if (node.closest("#speed-slider")) return "speed";
+    return null;
+  }
+
+  function roleForPoint(point) {
+    if (!point) return null;
+    const element = document.elementFromPoint(point.clientX, point.clientY);
+    return roleForNode(element);
+  }
+
+  function activeIdForRole(role) {
+    return role === "joystick" ? activeTouchIds.joystick : activeTouchIds.speed;
+  }
+
+  function setActiveId(role, id) {
+    if (role === "joystick") activeTouchIds.joystick = id;
+    if (role === "speed") activeTouchIds.speed = id;
+  }
+
+  function touchListToArray(list) {
+    return Array.from(list || []);
+  }
+
+  function touchForRole(event, role) {
+    const touches = touchListToArray(event.touches);
+    const changedTouches = touchListToArray(event.changedTouches);
+    const activeId = activeIdForRole(role);
+    if (activeId !== null && activeId !== undefined) {
+      return touches.find((touch) => touch.identifier === activeId)
+        || changedTouches.find((touch) => touch.identifier === activeId)
+        || null;
+    }
+    const candidates = changedTouches.length > 0 ? changedTouches : touches;
+    return candidates.find((touch) => roleForPoint(touch) === role) || null;
+  }
+
+  function eventForTouch(event, touch) {
+    if (!touch) return null;
+    const isolated = Object.create(event);
+    Object.defineProperty(isolated, "touches", { configurable: true, value: [touch] });
+    Object.defineProperty(isolated, "targetTouches", { configurable: true, value: [touch] });
+    Object.defineProperty(isolated, "changedTouches", { configurable: true, value: [touch] });
+    isolated.preventDefault = event.preventDefault.bind(event);
+    isolated.stopPropagation = event.stopPropagation.bind(event);
+    isolated.stopImmediatePropagation = event.stopImmediatePropagation.bind(event);
+    return isolated;
+  }
+
+  function roleForWindowTouchListener(type) {
+    if (type !== "touchmove" && type !== "touchend") return null;
+    windowListenerCounts[type] += 1;
+    if (windowListenerCounts[type] === 1) return "joystick";
+    if (windowListenerCounts[type] === 2) return "speed";
+    return null;
+  }
+
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (typeof listener !== "function") {
+      return originalAddEventListener.call(this, type, listener, options);
+    }
+
+    const targetRole = type === "touchstart" ? roleForNode(this) : null;
+    const windowRole = this === window ? roleForWindowTouchListener(type) : null;
+    const role = targetRole || windowRole;
+
+    if (!role) {
+      return originalAddEventListener.call(this, type, listener, options);
+    }
+
+    const wrapped = function(event) {
+      if (type === "touchstart") {
+        const touch = touchForRole(event, role);
+        if (!touch) return;
+        setActiveId(role, touch.identifier);
+        return listener.call(this, eventForTouch(event, touch));
+      }
+
+      if (type === "touchmove") {
+        const touch = touchForRole(event, role);
+        if (!touch) return;
+        return listener.call(this, eventForTouch(event, touch));
+      }
+
+      if (type === "touchend") {
+        const activeId = activeIdForRole(role);
+        const ended = touchListToArray(event.changedTouches).some((touch) => touch.identifier === activeId);
+        if (!ended) return;
+        setActiveId(role, null);
+        return listener.call(this, event);
+      }
+
+      return listener.call(this, event);
+    };
+
+    return originalAddEventListener.call(this, type, wrapped, options);
+  };
+
+  window.__ws63TouchIsolation = {
+    pick(event, role) {
+      return touchForRole(event, role);
+    }
+  };
+})();
+</script>`;
 
 const bridgeScript = `<script id="ws63-mobile-host-bridge">
 (() => {
@@ -173,7 +287,7 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const base = document.getElementById("joystick-base");
     if (!base) return;
     const rect = base.getBoundingClientRect();
-    const point = event.touches ? event.touches[0] : event;
+    const point = event.touches ? (window.__ws63TouchIsolation?.pick(event, "joystick") || event.touches[0]) : event;
     if (!point) return;
     const dx = point.clientX - rect.left - rect.width / 2;
     const dy = point.clientY - rect.top - rect.height / 2;
@@ -285,13 +399,22 @@ function injectBeforeCloseTag(html: string, closeTag: string, snippet: string): 
   return `${html.slice(0, index)}${snippet}${html.slice(index)}`;
 }
 
+function injectBeforeOpenDesignScript(html: string, scriptTag: string, snippet: string): string {
+  const index = html.indexOf(scriptTag);
+  if (index === -1) return injectBeforeCloseTag(html, "</head>", snippet);
+  return `${html.slice(0, index)}${snippet}${html.slice(index)}`;
+}
+
 export function buildMobileOpenDesignSrcDoc(html: string): string {
   const withPatch = html.includes("ws63-mobile-landscape-patch")
     ? html
     : injectBeforeCloseTag(html, "</head>", landscapePatch);
-  return withPatch.includes("ws63-mobile-host-bridge")
+  const withTouchIsolation = withPatch.includes("ws63-mobile-touch-isolation")
     ? withPatch
-    : injectBeforeCloseTag(withPatch, "</body>", bridgeScript);
+    : injectBeforeOpenDesignScript(withPatch, "<script src=\"https://unpkg.com/lucide@latest\"></script>", touchIsolationScript);
+  return withTouchIsolation.includes("ws63-mobile-host-bridge")
+    ? withTouchIsolation
+    : injectBeforeCloseTag(withTouchIsolation, "</body>", bridgeScript);
 }
 
 function formatNumber(value: number | undefined, digits = 1): string {
