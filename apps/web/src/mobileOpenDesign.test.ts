@@ -27,6 +27,12 @@ test("updates data tab metric values from live snapshot", () => {
   assert.match(result, /setDataMetric\("m-light", snapshot\.lightnessLabel\)/);
 });
 
+test("rescales live charts so light values outside mock range remain visible", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /function fitChartScale\(chart, values\)/);
+  assert.match(result, /fitChartScale\(chart, values\)/);
+});
+
 test("injects touch isolation before Open Design scripts and routes joystick touches by role", () => {
   const html = "<html><head><script src=\"https://unpkg.com/lucide@latest\"></script></head><body></body></html>";
   const result = buildMobileOpenDesignSrcDoc(html);

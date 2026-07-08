@@ -315,6 +315,18 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     ctx.stroke();
   }
 
+  function fitChartScale(chart, values) {
+    if (!chart?.options?.scales?.y || !Array.isArray(values) || values.length === 0) return;
+    const finiteValues = values.filter((value) => Number.isFinite(value));
+    if (finiteValues.length === 0) return;
+    const min = Math.min(...finiteValues);
+    const max = Math.max(...finiteValues);
+    const span = Math.max(1, max - min);
+    const padding = Math.max(span * 0.18, Math.abs(max || min) * 0.04, 1);
+    chart.options.scales.y.min = Math.floor(min - padding);
+    chart.options.scales.y.max = Math.ceil(max + padding);
+  }
+
   function updateChart(canvasId, values) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || !Array.isArray(values)) return;
@@ -325,6 +337,7 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     }
     chart.data.labels = values.map((_, index) => String(index + 1));
     chart.data.datasets[0].data = values;
+    fitChartScale(chart, values);
     chart.update("none");
   }
 

@@ -1,4 +1,4 @@
-import type { ConnectionMode } from "../App";
+import type { ConnectionMode } from "../types";
 
 export function defaultMobileConnectionMode(storedMode: string | null): ConnectionMode {
   return storedMode === "cloud" ? "cloud" : "local";
