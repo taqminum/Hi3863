@@ -17,8 +17,8 @@
 
 #define WIFI_ROUTER_SSID_PLACEHOLDER      "TO_BE_SET_ROUTER_SSID"
 #define WIFI_ROUTER_PASSWORD_PLACEHOLDER  "TO_BE_SET_ROUTER_PASSWORD"
-#define WIFI_ROUTER_SSID                  WIFI_ROUTER_SSID_PLACEHOLDER
-#define WIFI_ROUTER_PASSWORD              WIFI_ROUTER_PASSWORD_PLACEHOLDER
+#define WIFI_ROUTER_SSID                  "SugarLab_5G"
+#define WIFI_ROUTER_PASSWORD              "wifia302"
 
 #define WIFI_STA_LOG                      "[wifi_sta]"
 #define WIFI_IFNAME_MAX_SIZE              16
