@@ -341,6 +341,69 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     chart.update("none");
   }
 
+  function snapshotSeriesForKey(key) {
+    const snapshot = window.__ws63MobileSnapshot;
+    if (!snapshot?.series) return null;
+    if (key === "signal") return snapshot.series.rssi;
+    if (key === "temp") return snapshot.series.temperature;
+    if (key === "humid") return snapshot.series.humidity;
+    if (key === "light") return snapshot.series.lightness;
+    return null;
+  }
+
+  function openLiveChartModal(key) {
+    const originalStore = {
+      signal: { title: "SLE 信号质量", unit: "dBm", icon: "activity", type: "bar", color: "#00E6A8", bgColor: "rgba(0, 230, 168, 0.8)" },
+      temp: { title: "环境温度", unit: "°C", icon: "thermometer", type: "line", color: "#FF9800", bgColor: "rgba(255, 152, 0, 0.2)" },
+      humid: { title: "环境湿度", unit: "%RH", icon: "droplets", type: "line", color: "#FFB020", bgColor: "rgba(255, 176, 32, 0.3)" },
+      light: { title: "环境光照", unit: "lx", icon: "sun", type: "line", color: "#FFC107", bgColor: "rgba(255, 193, 7, 0.2)" }
+    };
+    const config = originalStore[key];
+    const values = snapshotSeriesForKey(key);
+    if (!config || !Array.isArray(values) || !window.Chart) {
+      return window.__ws63OriginalOpenChartModal?.(key);
+    }
+
+    const modal = document.getElementById("chart-modal");
+    const title = document.getElementById("modal-title");
+    const canvas = document.getElementById("detailed-chart");
+    const ctx = canvas?.getContext && canvas.getContext("2d");
+    if (!modal || !title || !ctx) return window.__ws63OriginalOpenChartModal?.(key);
+
+    title.innerHTML = '<i data-lucide="' + config.icon + '" width="18" height="18"></i> ' +
+      config.title + ' <span class="modal-subtitle">实时数据</span>';
+    window.lucide?.createIcons?.();
+    modal.classList.add("active");
+
+    if (window.__ws63DetailedChart) window.__ws63DetailedChart.destroy();
+    window.__ws63DetailedChart = new window.Chart(ctx, {
+      type: config.type,
+      data: {
+        labels: values.map((_, index) => String(index + 1)),
+        datasets: [{
+          label: config.unit,
+          data: values,
+          borderColor: config.color,
+          backgroundColor: config.type === "line" ? "rgba(255, 193, 7, 0.12)" : config.bgColor,
+          borderWidth: 3,
+          fill: true,
+          pointRadius: config.type === "line" ? 3 : 0
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#8E9BAE", maxTicksLimit: 8 } },
+          y: { position: "left", ticks: { color: "#8E9BAE" } }
+        },
+        animation: { duration: 0 },
+        elements: { line: { tension: 0.4 } }
+      }
+    });
+    fitChartScale(window.__ws63DetailedChart, values);
+    window.__ws63DetailedChart.update("none");
+  }
+
   function setActiveView(target) {
     if (!target) return;
     document.body.dataset.activeView = target;
@@ -458,6 +521,8 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
   }
 
   window.addEventListener("load", () => {
+    window.__ws63OriginalOpenChartModal = window.openChartModal;
+    window.openChartModal = openLiveChartModal;
     setActiveView("view-overview");
     document.querySelectorAll(".nav-item").forEach((item) => {
       item.addEventListener("click", () => setActiveView(item.dataset.target));

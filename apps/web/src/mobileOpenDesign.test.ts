@@ -33,6 +33,13 @@ test("rescales live charts so light values outside mock range remain visible", (
   assert.match(result, /fitChartScale\(chart, values\)/);
 });
 
+test("opens detail chart modal with live snapshot scale instead of mock light range", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /function openLiveChartModal\(key\)/);
+  assert.match(result, /window\.openChartModal = openLiveChartModal/);
+  assert.match(result, /fitChartScale\(window\.__ws63DetailedChart, values\)/);
+});
+
 test("injects touch isolation before Open Design scripts and routes joystick touches by role", () => {
   const html = "<html><head><script src=\"https://unpkg.com/lucide@latest\"></script></head><body></body></html>";
   const result = buildMobileOpenDesignSrcDoc(html);
