@@ -11,11 +11,12 @@ typedef struct {
 } patrol_step_t;
 
 static const patrol_step_t g_route[] = {
-    {CAR_MOTION_FORWARD, 45, 3000},
+    {CAR_MOTION_FORWARD, 45, 2000},
     {CAR_MOTION_LEFT, 35, 600},
-    {CAR_MOTION_FORWARD, 45, 3000},
+    {CAR_MOTION_FORWARD, 45, 2000},
     {CAR_MOTION_RIGHT, 35, 600},
-    {CAR_MOTION_STOP, 0, 1000},
+    {CAR_MOTION_FORWARD, 45, 2000},
+    {CAR_MOTION_STOP, 0, 500},
 };
 
 static uint8_t g_enabled;
@@ -34,7 +35,7 @@ void patrol_route_start(void)
     g_enabled = 1;
     g_step_index = 0;
     g_step_elapsed = 0;
-    printf("[car] timed patrol route start\r\n");
+    printf("[car] precheck route start\r\n");
 }
 
 void patrol_route_stop(void)
@@ -46,7 +47,7 @@ void patrol_route_stop(void)
     if (was_enabled != 0) {
         (void)car_motor_stop();
     }
-    printf("[car] timed patrol route stop\r\n");
+    printf("[car] precheck route stop\r\n");
 }
 
 void patrol_route_tick(uint32_t elapsed_ms, env_data_t *data)
@@ -78,7 +79,12 @@ void patrol_route_tick(uint32_t elapsed_ms, env_data_t *data)
         g_step_elapsed = 0;
         g_step_index++;
         if (g_step_index >= (sizeof(g_route) / sizeof(g_route[0]))) {
+            g_enabled = 0;
             g_step_index = 0;
+            (void)car_motor_stop();
+            data->patrol_enabled = 0;
+            data->motion = CAR_MOTION_STOP;
+            printf("[car] precheck route complete\r\n");
         }
     }
 }

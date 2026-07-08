@@ -53,6 +53,7 @@ apps/**/dist/
 # Runtime configuration and local databases
 .env
 apps/**/.env
+vendor/BearPi-Pico_H3863/products/ws63e_env_gateway/cloud_config.h
 data/
 apps/server/data/
 *.sqlite

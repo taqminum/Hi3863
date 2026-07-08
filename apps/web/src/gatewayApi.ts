@@ -33,6 +33,14 @@ export class GatewayError extends Error {
   }
 }
 
+export interface GatewayUdpRequest {
+  host: string;
+  port: number;
+  message: string;
+  timeoutMs: number;
+  expectResponse: boolean;
+}
+
 function rawFromText(text: string): RawGatewayTelemetry {
   try {
     const parsed = JSON.parse(text);
@@ -70,7 +78,17 @@ export function gatewayTelemetryToReading(sample: GatewayTelemetrySample): Readi
   };
 }
 
-async function udpRequest(message: string): Promise<string> {
+export function buildGatewayControlRequest(payload: CompatControlPayload | DrivePayload): GatewayUdpRequest {
+  return {
+    host: CAR_LOCAL_UDP_HOST,
+    port: CAR_LOCAL_UDP_PORT,
+    message: buildUdpGatewayControlMessage(payload),
+    timeoutMs: 0,
+    expectResponse: false
+  };
+}
+
+async function udpRequest(message: string, options: { timeoutMs?: number; expectResponse?: boolean } = {}): Promise<string> {
   if (!Capacitor.isNativePlatform()) {
     throw new GatewayError("gateway_udp_requires_android_apk");
   }
@@ -78,8 +96,9 @@ async function udpRequest(message: string): Promise<string> {
     host: CAR_LOCAL_UDP_HOST,
     port: CAR_LOCAL_UDP_PORT,
     message,
-    timeoutMs: 1200
+    timeoutMs: options.timeoutMs ?? 1200
   });
+  if (options.expectResponse === false) return response.response ?? "";
   if (!response.response) throw new GatewayError("gateway_udp_timeout");
   return response.response;
 }
@@ -91,5 +110,13 @@ export const gatewayApi = {
 
   async send(payload: CompatControlPayload | DrivePayload): Promise<GatewayTelemetrySample> {
     return parseGatewayTelemetryResponse(await udpRequest(buildUdpGatewayControlMessage(payload)));
+  },
+
+  async sendControl(payload: CompatControlPayload | DrivePayload): Promise<void> {
+    const request = buildGatewayControlRequest(payload);
+    await udpRequest(request.message, {
+      timeoutMs: request.timeoutMs,
+      expectResponse: request.expectResponse
+    });
   }
 };

@@ -19,7 +19,7 @@ extension.
 | `right` | `-100` to `100` | Right wheel open-loop percentage for `drive`. |
 | `duration_ms` | `0` to `3000` | Safety-bounded command duration. |
 
-Preset timed patrol uses the same endpoint with:
+One-shot precheck route uses the same endpoint with:
 
 ```json
 {"cmd":"auto_start"}
@@ -31,7 +31,15 @@ or
 {"cmd":"auto_stop"}
 ```
 
-Manual commands stop the preset patrol first, then apply the requested motion.
+`auto_start` runs this open-loop sequence once, then stops and clears the
+patrol flag:
+
+```text
+forward 2000 ms -> left 600 ms -> forward 2000 ms -> right 600 ms -> forward 2000 ms -> stop
+```
+
+`auto_stop` interrupts the precheck route and stops the car. Manual commands
+also stop the precheck route first, then apply the requested motion.
 
 Current firmware exposes `control_command_parse` and `control_command_apply`.
 The command receive transport is intentionally separate so serial, Wi-Fi, Web
@@ -65,8 +73,8 @@ Recommended app behavior:
   and `duration_ms`.
 - While a direction button is held, repeat the same command every 300 to 500 ms.
 - On button release, immediately send `{"cmd":"stop"}`.
-- Use `auto_start` and `auto_stop` only for the preset open-loop patrol route.
-- Any manual command stops the preset patrol before applying the manual motion.
+- Use `auto_start` and `auto_stop` only for the one-shot open-loop precheck route.
+- Any manual command stops the precheck route before applying the manual motion.
 
 Safety note:
 

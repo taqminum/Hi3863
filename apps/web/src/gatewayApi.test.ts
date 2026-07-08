@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { gatewayTelemetryToReading, parseGatewayTelemetryResponse } from "./gatewayApi.ts";
+import { buildGatewayControlRequest, gatewayTelemetryToReading, parseGatewayTelemetryResponse } from "./gatewayApi.ts";
 
 test("parseGatewayTelemetryResponse accepts raw car telemetry JSON from BearPi UDP", () => {
   const sample = parseGatewayTelemetryResponse(JSON.stringify({
@@ -40,4 +40,14 @@ test("gatewayTelemetryToReading marks source as sle gateway udp", () => {
   assert.equal(reading.linkMode, "gateway-udp");
   assert.equal(reading.rssi, -62);
   assert.equal(reading.cachedCount, 3);
+});
+
+test("buildGatewayControlRequest sends controls without waiting for telemetry", () => {
+  const request = buildGatewayControlRequest({ cmd: "drive", left: 70, right: 0, duration_ms: 350 });
+
+  assert.equal(request.host, "255.255.255.255");
+  assert.equal(request.port, 8888);
+  assert.equal(request.timeoutMs, 0);
+  assert.equal(request.expectResponse, false);
+  assert.match(request.message, /"cmd":"drive"/);
 });

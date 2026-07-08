@@ -28,7 +28,12 @@ import {
   type MobileHistoryRange,
   type MobileOpenDesignToHostMessage
 } from "./mobileOpenDesign";
-import { defaultMobileConnectionMode, mobileSessionAllowsLocalControl, shouldPollLocalTelemetry } from "./mobileSession";
+import {
+  defaultMobileConnectionMode,
+  mobileSessionAllowsLocalControl,
+  shouldAutoFallbackGatewayToCarDirect,
+  shouldPollLocalTelemetry
+} from "./mobileSession";
 
 const mobileFallbackDevice: DeviceRecord = {
   id: "ws63-car-001",
@@ -234,7 +239,7 @@ export function MobileConsoleApp() {
     let cancelled = false;
     let gatewayFailures = 0;
     async function pollLocal() {
-      if (connectionMode === "car-direct" && !shouldPollLocalTelemetry(Date.now(), lastLocalControlAtRef.current)) return;
+      if (connectionMode !== "cloud" && !shouldPollLocalTelemetry(Date.now(), lastLocalControlAtRef.current)) return;
       try {
         if (connectionMode === "gateway") {
           const sample = await gatewayApi.telemetry();
@@ -256,7 +261,7 @@ export function MobileConsoleApp() {
         if (cancelled) return;
         if (connectionMode === "gateway") {
           gatewayFailures += 1;
-          if (gatewayFailures >= 3) {
+          if (shouldAutoFallbackGatewayToCarDirect(gatewayFailures)) {
             changeConnectionMode("car-direct");
             setNotice("星闪基站 Wi-Fi 暂时不可达，已尝试切换到小车直连。");
             return;
@@ -355,10 +360,8 @@ export function MobileConsoleApp() {
             durationMs: message.durationMs
           });
         } else if (connectionMode === "gateway") {
-          const sample = await gatewayApi.send(payload);
-          const reading = gatewayTelemetryToReading(sample);
-          setGatewaySamples((current) => [...current.slice(-119), sample]);
-          await saveReadings("gateway", [reading]);
+          lastLocalControlAtRef.current = Date.now();
+          await gatewayApi.sendControl(payload);
         } else {
           lastLocalControlAtRef.current = Date.now();
           await localCarApi.send(payload);
@@ -375,10 +378,8 @@ export function MobileConsoleApp() {
             speed: 0
           });
         } else if (connectionMode === "gateway") {
-          const sample = await gatewayApi.send({ cmd: "stop", speed: 0, duration_ms: 0 });
-          const reading = gatewayTelemetryToReading(sample);
-          setGatewaySamples((current) => [...current.slice(-119), sample]);
-          await saveReadings("gateway", [reading]);
+          lastLocalControlAtRef.current = Date.now();
+          await gatewayApi.sendControl({ cmd: "stop", speed: 0, duration_ms: 0 });
         } else {
           lastLocalControlAtRef.current = Date.now();
           await localCarApi.send({ cmd: "stop", speed: 0, duration_ms: 0 });
@@ -387,10 +388,8 @@ export function MobileConsoleApp() {
       }
       if (message.type === "create-patrol") {
         if (connectionMode === "gateway") {
-          const sample = await gatewayApi.send({ cmd: "auto_start" });
-          const reading = gatewayTelemetryToReading(sample);
-          setGatewaySamples((current) => [...current.slice(-119), sample]);
-          await saveReadings("gateway", [reading]);
+          lastLocalControlAtRef.current = Date.now();
+          await gatewayApi.sendControl({ cmd: "auto_start" });
           setNotice("已向星闪基站发送自动巡检启动指令");
           return;
         }

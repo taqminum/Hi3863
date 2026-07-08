@@ -18,6 +18,7 @@
 #include "wifi_router_sta.h"
 #include "telemetry_cache.h"
 #include "udp_bridge.h"
+#include "cloud_uplink.h"
 
 #define GATEWAY_SLE_STACK_SIZE              0x1200
 #define GATEWAY_UDP_STACK_SIZE              0x1000
@@ -174,6 +175,8 @@ static void gateway_entry(void)
     if (task_handle != NULL) {
         osal_kthread_set_priority(task_handle, GATEWAY_UDP_PRIO);
     }
+
+    cloud_uplink_start();
 
     osal_kthread_unlock();
 }

@@ -65,6 +65,35 @@ Or use the VSCode/HiSpark Studio IDE in the BearPi SDK workspace:
 | Channel | 13 |
 | Security | WPA2/WPA mixed |
 
+## Cloud Uplink
+
+When router STA credentials are configured and DHCP succeeds, the gateway also
+uploads the latest cached SLE telemetry directly to the cloud ingest API.
+
+Local secret config is kept in:
+
+```text
+vendor/BearPi-Pico_H3863/products/ws63e_env_gateway/cloud_config.h
+```
+
+This file is ignored by Git. If it is missing, copy
+`cloud_config.example.h` to `cloud_config.h` and replace
+`CLOUD_UPLINK_DEVICE_KEY` with the cloud `DEVICE_INGEST_KEY`.
+
+Current first-pass transport is HTTP over TCP:
+
+```text
+POST http://www.rxcccccc.icu/ws63-api/api/ingest/base-stations/sle-base-001/telemetry
+X-Device-Key: <DEVICE_INGEST_KEY>
+```
+
+Expected serial logs:
+
+```text
+[cloud_uplink] start http://www.rxcccccc.icu/ws63-api base=sle-base-001 device=ws63-car-001
+[cloud_uplink] uploaded telemetry, bytes=...
+```
+
 ## SLE
 
 | Parameter | Value |
@@ -165,6 +194,7 @@ echo "forward" | nc -u -w2 192.168.6.1 8888
 ## Known Limitations
 
 - **UDP only** — HTTP API is planned but not yet implemented. UDP is the first-pass transport.
+- Cloud uplink uses HTTP on port 80. HTTPS/TLS is not enabled in this firmware pass.
 - **No BLE** — BLE support is not included in this version.
 - **Single connection** — One car SLE Client at a time.
 - **No authentication** — UDP commands are accepted from any device on the Wi-Fi network.

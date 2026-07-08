@@ -21,9 +21,11 @@
 
 #define ENV_PATROL_TASK_STACK_SIZE 0x1800
 #define ENV_PATROL_SAMPLE_PERIOD_MS 1000U
+#define ENV_PATROL_CONTROL_PERIOD_MS 100U
 #define ENV_PATROL_TICK_MS 10U
 #define ENV_PATROL_SAMPLE_PERIOD_TICKS (ENV_PATROL_SAMPLE_PERIOD_MS / ENV_PATROL_TICK_MS)
-#define ENV_PATROL_FW_TAG "env-car-20260702-fp-exip06diag-rawmotor"
+#define ENV_PATROL_CONTROL_PERIOD_TICKS (ENV_PATROL_CONTROL_PERIOD_MS / ENV_PATROL_TICK_MS)
+#define ENV_PATROL_FW_TAG "env-car-20260708-precheck-route"
 #define ENV_PATROL_MOTOR_SELF_TEST_ON_BOOT 0
 #define ENV_PATROL_MOTOR_DIAG_ON_BOOT 0
 #define ENV_PATROL_MOTOR_TEST_SPEED 50U
@@ -150,16 +152,24 @@ static void env_patrol_task(void *arg)
     (void)car_sle_client_start();
     (void)telemetry_init();
 
+    uint32_t sample_elapsed_ms = ENV_PATROL_SAMPLE_PERIOD_MS;
     while (1) {
-        data.sample_seq++;
-        env_patrol_collect(&data);
-        env_patrol_update_alerts(&data);
-        car_motor_tick(ENV_PATROL_SAMPLE_PERIOD_MS);
-        patrol_route_tick(ENV_PATROL_SAMPLE_PERIOD_MS, &data);
+        car_motor_tick(ENV_PATROL_CONTROL_PERIOD_MS);
+        patrol_route_tick(ENV_PATROL_CONTROL_PERIOD_MS, &data);
         data.motion = car_motor_get_motion();
-        oled_status_render(&data);
-        (void)telemetry_publish(&data);
-        osDelay(ENV_PATROL_SAMPLE_PERIOD_TICKS);
+
+        sample_elapsed_ms += ENV_PATROL_CONTROL_PERIOD_MS;
+        if (sample_elapsed_ms >= ENV_PATROL_SAMPLE_PERIOD_MS) {
+            sample_elapsed_ms = 0;
+            data.sample_seq++;
+            env_patrol_collect(&data);
+            env_patrol_update_alerts(&data);
+            data.motion = car_motor_get_motion();
+            oled_status_render(&data);
+            (void)telemetry_publish(&data);
+        }
+
+        osDelay(ENV_PATROL_CONTROL_PERIOD_TICKS);
     }
 }
 

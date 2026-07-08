@@ -13,3 +13,7 @@ export function mobileSessionAllowsLocalControl(connectionMode: ConnectionMode, 
 export function shouldPollLocalTelemetry(nowMs: number, lastControlAtMs: number, quietMs = 800): boolean {
   return lastControlAtMs <= 0 || nowMs - lastControlAtMs >= quietMs;
 }
+
+export function shouldAutoFallbackGatewayToCarDirect(_failureCount: number): boolean {
+  return false;
+}
