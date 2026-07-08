@@ -1,10 +1,10 @@
 # 星闪基站接入 API
 
-基站通过 SLE 与小车交换数据，通过云端 API 与 Web/APK 平台同步。Web/APK 默认只连接云服务器；小车 SoftAP HTTP 只作为调试和兜底链路。
+基站通过 SLE 与小车交换数据，通过云端 API 与 Web/APK 平台同步。Web 端默认查看云端数据；APK 默认走云服务器，也可切换为星闪基站 Wi-Fi UDP 或小车 SoftAP HTTP 直连。
 
 ## 基础信息
 
-- 云端 API：`https://rxcccccc.icu/ws63-api`
+- 云端 API：`https://www.rxcccccc.icu/ws63-api`
 - 本地调试：`http://127.0.0.1:8787`
 - 鉴权请求头：`X-Device-Key: <DEVICE_INGEST_KEY>`
 - 默认基站：`sle-base-001`
@@ -18,7 +18,7 @@
 推荐上传平台格式：
 
 ```bash
-curl -X POST https://rxcccccc.icu/ws63-api/api/ingest/base-stations/sle-base-001/telemetry \
+curl -X POST https://www.rxcccccc.icu/ws63-api/api/ingest/base-stations/sle-base-001/telemetry \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"batchId":"sle-base-001-1001","sequence":1001,"link":{"rssi":-52,"cachedCount":0,"mode":"sle"},"devices":[{"deviceId":"ws63-car-001","temperature":24.5,"humidity":53.2,"lightness":900,"gear":"M","direction":"forward","status":"moving"}]}'
@@ -27,7 +27,7 @@ curl -X POST https://rxcccccc.icu/ws63-api/api/ingest/base-stations/sle-base-001
 也兼容当前小车原始 JSON：
 
 ```bash
-curl -X POST https://rxcccccc.icu/ws63-api/api/ingest/base-stations/sle-base-001/telemetry \
+curl -X POST https://www.rxcccccc.icu/ws63-api/api/ingest/base-stations/sle-base-001/telemetry \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"seq":42,"temp_x10":253,"humi_x10":618,"light_x10":845,"motion":1,"patrol":0,"err":0}'
@@ -45,10 +45,19 @@ curl -X POST https://rxcccccc.icu/ws63-api/api/ingest/base-stations/sle-base-001
 
 首次写入返回 `201`；重复 `batchId` 返回 `200` 和 `duplicate: true`。
 
+云端会长期保存 `readings`，App 查询历史曲线时使用：
+
+```bash
+curl "https://www.rxcccccc.icu/ws63-api/api/readings?deviceId=ws63-car-001&from=2026-07-08T09:00:00.000Z&to=2026-07-08T10:00:00.000Z&limit=1000" \
+  -H "Authorization: Bearer <user-token>"
+```
+
+注意曲线不会补齐断点。如果某个时间段云端没有收到基站上传数据，App 会把该时间桶显示为空白。
+
 ## 拉取待执行命令
 
 ```bash
-curl https://rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/commands/pending \
+curl https://www.rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/commands/pending \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>"
 ```
 
@@ -96,12 +105,37 @@ curl https://rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/commands/pendi
 - 新 `drive` 会取消同一小车同一基站尚未完成的旧 `drive`，避免摇杆命令堆积。
 - `stop` 会取消旧 `drive` 并保留自身，确保松手停车优先。
 
+## APK 到基站 Wi-Fi UDP 协议
+
+当 APK 选择“星闪基站 Wi-Fi”时，手机通过 Android 原生 `Ws63Udp` 插件向 `255.255.255.255:8888` 广播 UDP 文本；如果后续固定基站 IP，也可以改为基站地址。
+
+- 拉取当前遥测：`GET`
+- 遥控命令：上文控制 payload 的 JSON 字符串
+
+基站返回当前小车遥测 JSON。建议直接返回兼容小车原始格式，并额外带上链路字段：
+
+```json
+{
+  "seq": 42,
+  "temp_x10": 253,
+  "humi_x10": 618,
+  "light_x10": 845,
+  "motion": 1,
+  "patrol": 0,
+  "err": 0,
+  "rssi": -48,
+  "cached_count": 3
+}
+```
+
+APK 会把 UDP 返回数据写入手机本地缓存。该链路历史长度取决于手机缓存和基站可返回的数据，不能替代云端长期存储。
+
 ## 回执命令状态
 
 成功：
 
 ```bash
-curl -X PATCH https://rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
+curl -X PATCH https://www.rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"status":"executed"}'
@@ -110,7 +144,7 @@ curl -X PATCH https://rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
 失败：
 
 ```bash
-curl -X PATCH https://rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
+curl -X PATCH https://www.rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"status":"failed","errorMessage":"SLE timeout"}'
@@ -121,7 +155,7 @@ curl -X PATCH https://rxcccccc.icu/ws63-api/api/commands/<commandId>/ack \
 ## 拉取巡检任务
 
 ```bash
-curl https://rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/patrol-tasks/pending \
+curl https://www.rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/patrol-tasks/pending \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>"
 ```
 
@@ -130,7 +164,7 @@ curl https://rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/patrol-tasks/p
 ## 回执巡检任务状态
 
 ```bash
-curl -X PATCH https://rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status \
+curl -X PATCH https://www.rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"status":"running"}'
@@ -148,7 +182,7 @@ curl -X PATCH https://rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status \
 完成任务：
 
 ```bash
-curl -X PATCH https://rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status \
+curl -X PATCH https://www.rxcccccc.icu/ws63-api/api/patrol-tasks/<taskId>/status \
   -H "Content-Type: application/json" \
   -H "X-Device-Key: <DEVICE_INGEST_KEY>" \
   -d '{"status":"completed"}'

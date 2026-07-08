@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { URL } from "node:url";
 import { signToken, verifyPassword, verifyToken } from "./auth.ts";
+import { analyzeHistoryReadings, type MissingInterval } from "./agent-service.ts";
 import { getConfig } from "./config.ts";
 import {
   acknowledgeCommand,
@@ -22,6 +23,7 @@ import {
   listUsers,
   pendingCommands,
   pendingPatrolTasks,
+  readingsByTimeRange,
   readingsCsv,
   recentCommands,
   updateBaseStation,
@@ -29,7 +31,14 @@ import {
   updateDeviceStatus,
   updatePatrolTaskStatus
 } from "./db.ts";
-import { canPerform, normalizeIncomingTelemetry, parsePatrolSteps, validateControlInput, type Permission } from "./domain.ts";
+import {
+  canPerform,
+  normalizeIncomingTelemetry,
+  parsePatrolSteps,
+  validateControlInput,
+  type Permission,
+  type SensorReading
+} from "./domain.ts";
 import { readJson, requestId, sendJson, sendText } from "./http-utils.ts";
 import { addSseClient, broadcast } from "./realtime.ts";
 import type { User } from "./types.ts";
@@ -64,6 +73,40 @@ function getBearerUser(request: IncomingMessage, url: URL): User | null {
   const auth = request.headers.authorization;
   const token = auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : url.searchParams.get("token");
   return token ? verifyToken(token) : null;
+}
+
+function normalizeUploadedReadings(value: unknown, deviceId: string): SensorReading[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .map((item, index) => ({
+      id: String(item.id ?? `app-${deviceId}-${Date.parse(String(item.recordedAt ?? item.recorded_at ?? "")) || Date.now()}-${index}`),
+      deviceId: String(item.deviceId ?? item.device_id ?? deviceId),
+      baseStationId: String(item.baseStationId ?? item.base_station_id ?? "app-cache"),
+      temperature: Number(item.temperature ?? 0),
+      humidity: Number(item.humidity ?? 0),
+      lightness: Number(item.lightness ?? 0),
+      gear: String(item.gear ?? "M"),
+      direction: String(item.direction ?? "unknown"),
+      status: String(item.status ?? "unknown"),
+      linkMode: String(item.linkMode ?? item.link_mode ?? "app-cache"),
+      rssi: Number(item.rssi ?? 0),
+      cachedCount: Number(item.cachedCount ?? item.cached_count ?? 0),
+      recordedAt: String(item.recordedAt ?? item.recorded_at ?? new Date().toISOString())
+    }))
+    .filter((item) => Number.isFinite(Date.parse(item.recordedAt)));
+}
+
+function normalizeMissingIntervals(value: unknown): MissingInterval[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .map((item) => ({
+      from: String(item.from ?? ""),
+      to: String(item.to ?? ""),
+      durationMs: Number(item.durationMs ?? item.duration_ms ?? 0)
+    }))
+    .filter((item) => item.from && item.to && Number.isFinite(item.durationMs));
 }
 
 const routes: Handler = async (request, response, url, user) => {
@@ -207,7 +250,12 @@ const routes: Handler = async (request, response, url, user) => {
     if (!requirePermission(response, user, "device:read")) return;
     const deviceId = url.searchParams.get("deviceId") ?? "ws63-car-001";
     const limit = Number(url.searchParams.get("limit") ?? 120);
-    send(response, 200, { readings: latestReadings(deviceId, limit) });
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
+    const readings = from || to
+      ? readingsByTimeRange({ deviceId, from, to, limit })
+      : latestReadings(deviceId, limit);
+    send(response, 200, { readings });
     return;
   }
 
@@ -404,6 +452,33 @@ const routes: Handler = async (request, response, url, user) => {
   if (method === "GET" && url.pathname === "/api/agent-reports") {
     if (!requirePermission(response, user, "device:read")) return;
     send(response, 200, { reports: latestAgentReports() });
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/agent/analyze-history") {
+    if (!requirePermission(response, user, "device:read")) return;
+    const body = await readJson<{
+      deviceId?: string;
+      range?: { from?: string; to?: string };
+      readings?: unknown;
+      missingIntervals?: unknown;
+      source?: string;
+    }>(request);
+    const deviceId = body.deviceId ?? "ws63-car-001";
+    const range = {
+      from: body.range?.from ?? new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      to: body.range?.to ?? new Date().toISOString()
+    };
+    const report = await analyzeHistoryReadings({
+      deviceId,
+      range,
+      readings: normalizeUploadedReadings(body.readings, deviceId),
+      missingIntervals: normalizeMissingIntervals(body.missingIntervals),
+      source: body.source
+    });
+    addAudit(user.id, "agent.history", "device", deviceId, auditDetails({ ...body, readings: "[app-history]" }, { result: report }));
+    broadcast("agent", report);
+    send(response, 201, { report });
     return;
   }
 

@@ -64,7 +64,7 @@ Focused commands:
 - `npm run test --workspace apps/web`
 - `npm run build --workspace apps/web`
 
-Cloud deployment is handled by `deploy/deploy.ps1`. The public Web path is `https://rxcccccc.icu/ws63/`, and the API path is `https://rxcccccc.icu/ws63-api/`.
+Cloud deployment is handled by `deploy/deploy.ps1`. The public Web path is `https://www.rxcccccc.icu/ws63/`, and the API path is `https://www.rxcccccc.icu/ws63-api/`.
 
 ## Android / Device Debugging
 

@@ -302,6 +302,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--color-cyan); box
 .login-panel p, .login-panel small { color: var(--fg-secondary); }
 .login-panel label { display: grid; gap: 7px; color: var(--fg-secondary); }
 .login-panel label span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.login-demo-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.login-panel .login-demo-row button { min-height: 34px; color: var(--fg-secondary); background: var(--bg-surface-elevated); border: 1px solid var(--border-color); font-size: 12px; }
 .login-panel button { min-height: 44px; border-radius: 12px; background: var(--color-cyan); color: #06110e; font-weight: 800; }
 .error { color: var(--color-red) !important; }
 

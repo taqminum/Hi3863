@@ -224,6 +224,38 @@ export function latestReadings(deviceId = "ws63-car-001", limit = 120): SensorRe
     .map(rowToReading);
 }
 
+export function readingsByTimeRange(input: {
+  deviceId?: string;
+  from?: string | null;
+  to?: string | null;
+  limit?: number;
+}): SensorReading[] {
+  const deviceId = input.deviceId ?? "ws63-car-001";
+  const limit = Math.max(1, Math.min(5000, Math.round(input.limit ?? 1000)));
+  const clauses = ["device_id = ?"];
+  const params: Array<string | number> = [deviceId];
+  if (input.from) {
+    clauses.push("recorded_at >= ?");
+    params.push(input.from);
+  }
+  if (input.to) {
+    clauses.push("recorded_at < ?");
+    params.push(input.to);
+  }
+  params.push(limit);
+  return db
+    .prepare(
+      `SELECT id, device_id, base_station_id, temperature, humidity, lightness, gear, direction, status,
+              link_mode, rssi, cached_count, recorded_at
+       FROM sensor_readings
+       WHERE ${clauses.join(" AND ")}
+       ORDER BY recorded_at ASC
+       LIMIT ?`
+    )
+    .all(...params)
+    .map(rowToReading);
+}
+
 function rowToReading(row: Record<string, unknown>): SensorReading {
   return {
     id: String(row.id),

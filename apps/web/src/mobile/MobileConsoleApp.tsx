@@ -12,7 +12,11 @@ import {
   type Reading,
   type User
 } from "../api";
+import { connectionNotice } from "../connectionModes";
 import { buildDrivePayload, localTelemetryToReading, type LocalTelemetrySample } from "../carProtocol";
+import { gatewayApi, gatewayTelemetryToReading, type GatewayTelemetrySample } from "../gatewayApi";
+import { historyCache } from "../historyCache";
+import { summarizeReadingsForAgent, type CachedReading, type ReadingSource } from "../historySeries";
 import { localCarApi } from "../localCarApi";
 import type { ConnectionMode } from "../types";
 import { Login } from "../views/Login";
@@ -21,6 +25,7 @@ import {
   buildMobileOpenDesignSnapshot,
   buildMobileOpenDesignSrcDoc,
   type HostToMobileOpenDesignMessage,
+  type MobileHistoryRange,
   type MobileOpenDesignToHostMessage
 } from "./mobileOpenDesign";
 import { defaultMobileConnectionMode, mobileSessionAllowsLocalControl, shouldPollLocalTelemetry } from "./mobileSession";
@@ -36,12 +41,54 @@ const mobileFallbackDevice: DeviceRecord = {
   remark: "APK 横屏控制台默认设备"
 };
 
+const gatewayFallbackDevice: DeviceRecord = {
+  id: "ws63-car-001",
+  name: "WS63E 环境巡检小车 001",
+  base_station_id: "sle-base-001",
+  status: "online",
+  connection_mode: "sle-gateway",
+  direct_url: "udp://255.255.255.255:8888",
+  last_seen: new Date(0).toISOString(),
+  remark: "BearPi 星闪基站 Wi-Fi UDP"
+};
+
+const carDirectFallbackDevice: DeviceRecord = {
+  id: "ws63-car-001",
+  name: "WS63E 小车直连",
+  base_station_id: "local-car-softap",
+  status: "online",
+  connection_mode: "wifi-softap",
+  direct_url: "http://192.168.5.1:8080",
+  last_seen: new Date(0).toISOString(),
+  remark: "小车 SoftAP HTTP 兜底"
+};
+
 const mobileLocalUser: User = {
   id: "local-field-operator",
   username: "local",
   displayName: "本地联调",
   role: "operator"
 };
+
+function historyRangeMs(range: MobileHistoryRange): number {
+  if (range === "7D") return 7 * 24 * 60 * 60 * 1000;
+  if (range === "24H") return 24 * 60 * 60 * 1000;
+  return 60 * 60 * 1000;
+}
+
+function historyRangeLimit(range: MobileHistoryRange): number {
+  if (range === "7D") return 5000;
+  if (range === "24H") return 2400;
+  return 1000;
+}
+
+function mergeReadingsById(...groups: Reading[][]): Reading[] {
+  const byId = new Map<string, Reading>();
+  for (const reading of groups.flat()) {
+    byId.set(reading.id, reading);
+  }
+  return [...byId.values()].sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
+}
 
 function readStoredUser(): User | null {
   const raw = localStorage.getItem("ws63-user");
@@ -59,8 +106,8 @@ export function MobileConsoleApp() {
   const lastLocalControlAtRef = useRef(0);
   const srcDoc = useMemo(() => buildMobileOpenDesignSrcDoc(prototypeHtml), []);
   const [token, setToken] = useState(() => localStorage.getItem("ws63-token"));
-  const [connectionMode] = useState<ConnectionMode>(() => defaultMobileConnectionMode(localStorage.getItem("ws63-connection-mode")));
-  const [user, setUser] = useState<User | null>(() => readStoredUser() ?? (connectionMode === "local" ? mobileLocalUser : null));
+  const [connectionMode, setConnectionMode] = useState<ConnectionMode>(() => defaultMobileConnectionMode(localStorage.getItem("ws63-connection-mode")));
+  const [user, setUser] = useState<User | null>(() => readStoredUser() ?? (defaultMobileConnectionMode(localStorage.getItem("ws63-connection-mode")) === "cloud" ? null : mobileLocalUser));
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [baseStations, setBaseStations] = useState<BaseStationRecord[]>([]);
   const [readings, setReadings] = useState<Reading[]>([]);
@@ -70,36 +117,103 @@ export function MobileConsoleApp() {
   const [audits, setAudits] = useState<AuditLog[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("ws63-car-001");
   const [notice, setNotice] = useState("");
+  const [historyRange, setHistoryRange] = useState<MobileHistoryRange>("1H");
   const [localSamples, setLocalSamples] = useState<LocalTelemetrySample[]>([]);
+  const [gatewaySamples, setGatewaySamples] = useState<GatewayTelemetrySample[]>([]);
+  const [cachedReadings, setCachedReadings] = useState<CachedReading[]>([]);
 
-  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0] ?? mobileFallbackDevice;
-  const activeReadings = connectionMode === "local" ? localSamples.map(localTelemetryToReading) : readings;
+  const fallbackDevice = connectionMode === "gateway" ? gatewayFallbackDevice : connectionMode === "car-direct" ? carDirectFallbackDevice : mobileFallbackDevice;
+  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0] ?? fallbackDevice;
+  const liveReadings = connectionMode === "gateway"
+    ? gatewaySamples.map(gatewayTelemetryToReading)
+    : connectionMode === "car-direct"
+      ? localSamples.map(localTelemetryToReading)
+      : readings;
+  const activeReadings = cachedReadings.length > 0 ? cachedReadings : liveReadings;
 
   const logout = useCallback(() => {
     localStorage.removeItem("ws63-token");
     localStorage.removeItem("ws63-user");
     setToken(null);
-    setUser(connectionMode === "local" ? mobileLocalUser : null);
+    setUser(connectionMode === "cloud" ? null : mobileLocalUser);
   }, [connectionMode]);
+
+  const rangeForCache = useCallback(() => {
+    const to = new Date();
+    const from = new Date(to.getTime() - historyRangeMs(historyRange));
+    return { from: from.toISOString(), to: to.toISOString() };
+  }, [historyRange]);
+
+  const reloadCache = useCallback(async (deviceId = selectedDeviceId) => {
+    const range = rangeForCache();
+    setCachedReadings(await historyCache.load({ deviceId, ...range }));
+  }, [rangeForCache, selectedDeviceId]);
+
+  useEffect(() => {
+    void reloadCache();
+  }, [connectionMode, historyRange, reloadCache]);
+
+  const saveReadings = useCallback(async (source: ReadingSource, nextReadings: Reading[]) => {
+    await historyCache.save(source, nextReadings);
+    await reloadCache(nextReadings[0]?.deviceId ?? selectedDeviceId);
+  }, [reloadCache, selectedDeviceId]);
+
+  const changeConnectionMode = useCallback((mode: ConnectionMode) => {
+    localStorage.setItem("ws63-connection-mode", mode);
+    setConnectionMode(mode);
+    if (mode !== "cloud" && !readStoredUser()) setUser(mobileLocalUser);
+    setNotice(connectionNotice(mode));
+  }, []);
+
+  function localAgentReport(inputReadings: Reading[], source: string): AgentReport {
+    const range = rangeForCache();
+    const summary = summarizeReadingsForAgent(inputReadings, { ...range, maxPoints: 80 });
+    const gapCount = summary.missingIntervals.length;
+    const temp = summary.stats.temperature;
+    const riskLevel = gapCount > 0 || (temp.max ?? 0) >= 30 ? "medium" : "low";
+    return {
+      riskLevel,
+      summary: `本地规则分析：${source} 数据 ${summary.points.length} 点，温度 ${temp.min ?? "--"}-${temp.max ?? "--"}°C，缺口 ${gapCount} 段。`,
+      suggestions: gapCount > 0 ? ["曲线空白表示该时间段手机未收到数据，请检查基站或小车链路。"] : ["当前缓存数据连续，建议继续观察趋势。"],
+      evidence: summary.missingIntervals.map((gap) => ({ code: "data_gap", label: "数据缺口", value: `${Math.round(gap.durationMs / 1000)}s` }))
+    };
+  }
 
   const guarded = useCallback(async (task: () => Promise<void>) => {
     try {
       await task();
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
+        if (token?.startsWith("local-demo:")) {
+          changeConnectionMode("gateway");
+          setNotice("本地演示会话不能访问云端接口，已切换到星闪基站 Wi-Fi。");
+          return;
+        }
         logout();
+        return;
+      }
+      if (error instanceof ApiError && error.status === 0 && connectionMode === "cloud") {
+        changeConnectionMode("gateway");
+        setNotice("云服务器暂时不可达，已尝试切换到星闪基站 Wi-Fi。");
         return;
       }
       setNotice(error instanceof Error ? error.message : "请求失败");
     }
-  }, [logout]);
+  }, [changeConnectionMode, connectionMode, logout, token]);
 
   const refresh = useCallback(async (nextToken = token, nextDeviceId = selectedDeviceId) => {
-    if (!nextToken || connectionMode === "local") return;
+    if (!nextToken || connectionMode !== "cloud" || nextToken.startsWith("local-demo:")) return;
     const dashboard = await api.dashboard(nextToken, nextDeviceId);
+    const range = rangeForCache();
+    const history = await api.readings(nextToken, nextDeviceId, {
+      ...range,
+      limit: historyRangeLimit(historyRange)
+    });
+    const mergedReadings = mergeReadingsById(history.readings, dashboard.readings);
     setDevices(dashboard.devices);
     setBaseStations(dashboard.baseStations);
-    setReadings(dashboard.readings);
+    setReadings(mergedReadings);
+    await saveReadings("cloud", mergedReadings);
     setCommands(dashboard.recentCommands);
     setTasks(dashboard.recentTasks);
     setReports(dashboard.agentReports);
@@ -109,42 +223,64 @@ export function MobileConsoleApp() {
     if (user?.role === "admin") {
       setAudits((await api.audits(nextToken)).logs);
     }
-  }, [connectionMode, selectedDeviceId, token, user?.role]);
+  }, [connectionMode, historyRange, rangeForCache, saveReadings, selectedDeviceId, token, user?.role]);
 
   useEffect(() => {
     void guarded(() => refresh());
   }, [guarded, refresh]);
 
   useEffect(() => {
-    if (connectionMode !== "local") return;
+    if (connectionMode === "cloud") return;
     let cancelled = false;
-    async function pollLocalCar() {
-      if (!shouldPollLocalTelemetry(Date.now(), lastLocalControlAtRef.current)) return;
+    let gatewayFailures = 0;
+    async function pollLocal() {
+      if (connectionMode === "car-direct" && !shouldPollLocalTelemetry(Date.now(), lastLocalControlAtRef.current)) return;
       try {
-        const sample = await localCarApi.telemetry();
-        if (!cancelled) {
+        if (connectionMode === "gateway") {
+          const sample = await gatewayApi.telemetry();
+          if (cancelled) return;
+          const reading = gatewayTelemetryToReading(sample);
+          setGatewaySamples((current) => [...current.slice(-119), sample]);
+          await saveReadings("gateway", [reading]);
+          gatewayFailures = 0;
+          setNotice("");
+        } else {
+          const sample = await localCarApi.telemetry();
+          if (cancelled) return;
+          const reading = localTelemetryToReading(sample);
           setLocalSamples((current) => [...current.slice(-119), sample]);
+          await saveReadings("car-direct", [reading]);
           setNotice("");
         }
       } catch (error) {
-        if (!cancelled) setNotice(error instanceof Error ? `本地小车连接失败：${error.message}` : "本地小车连接失败");
+        if (cancelled) return;
+        if (connectionMode === "gateway") {
+          gatewayFailures += 1;
+          if (gatewayFailures >= 3) {
+            changeConnectionMode("car-direct");
+            setNotice("星闪基站 Wi-Fi 暂时不可达，已尝试切换到小车直连。");
+            return;
+          }
+        }
+        setNotice(error instanceof Error ? `${connectionMode} 连接失败：${error.message}` : `${connectionMode} 连接失败`);
       }
     }
-    void pollLocalCar();
-    const timer = window.setInterval(() => void pollLocalCar(), 1000);
+    void pollLocal();
+    const timer = window.setInterval(() => void pollLocal(), 1000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [connectionMode]);
+  }, [changeConnectionMode, connectionMode, saveReadings]);
 
   useEffect(() => {
-    if (!token || connectionMode === "local") return;
+    if (!token || connectionMode !== "cloud" || token.startsWith("local-demo:")) return;
     const events = new EventSource(`${apiBaseUrl()}/api/events?token=${encodeURIComponent(token)}`);
     events.addEventListener("telemetry", (event) => {
       const payload = JSON.parse((event as MessageEvent).data).data as { readings: Reading[]; report: AgentReport };
-      setReadings((current) => [...current.slice(-150), ...payload.readings.filter((reading) => reading.deviceId === selectedDeviceId)]);
+      setReadings((current) => mergeReadingsById(current, payload.readings.filter((reading) => reading.deviceId === selectedDeviceId)).slice(-5000));
       setReports((current) => [payload.report, ...current].slice(0, 20));
+      void saveReadings("cloud", payload.readings);
       void guarded(() => refresh());
     });
     events.addEventListener("command", () => void guarded(() => refresh()));
@@ -152,13 +288,14 @@ export function MobileConsoleApp() {
     events.addEventListener("device", () => void guarded(() => refresh()));
     events.onerror = () => setNotice("实时连接暂时中断，正在等待自动重连");
     return () => events.close();
-  }, [connectionMode, guarded, refresh, selectedDeviceId, token]);
+  }, [connectionMode, guarded, refresh, saveReadings, selectedDeviceId, token]);
 
   const snapshot = useMemo(() => {
     if (!user) return null;
     return buildMobileOpenDesignSnapshot({
       user,
       connectionMode,
+      historyRange,
       selectedDevice,
       devices,
       baseStations,
@@ -169,7 +306,7 @@ export function MobileConsoleApp() {
       audits,
       notice
     });
-  }, [activeReadings, audits, baseStations, commands, connectionMode, devices, notice, reports, selectedDevice, tasks, user]);
+  }, [activeReadings, audits, baseStations, commands, connectionMode, devices, historyRange, notice, reports, selectedDevice, tasks, user]);
 
   const postSnapshot = useCallback(() => {
     if (!snapshot) return;
@@ -195,13 +332,19 @@ export function MobileConsoleApp() {
       logout();
       return;
     }
+    if (message.type === "connection-mode") {
+      changeConnectionMode(message.mode);
+      return;
+    }
+    if (message.type === "history-range") {
+      setHistoryRange(message.range);
+      return;
+    }
     await guarded(async () => {
       if (message.type === "drive") {
-        if (connectionMode === "local") {
-          lastLocalControlAtRef.current = Date.now();
-          await localCarApi.send(buildDrivePayload({ left: message.left, right: message.right }, message.durationMs));
-        } else {
-          if (!token) return;
+        const payload = buildDrivePayload({ left: message.left, right: message.right }, message.durationMs);
+        if (connectionMode === "cloud") {
+          if (!token || token.startsWith("local-demo:")) return;
           await api.command(token, {
             deviceId: selectedDevice.id,
             baseStationId: selectedDevice.base_station_id,
@@ -211,31 +354,52 @@ export function MobileConsoleApp() {
             right: message.right,
             durationMs: message.durationMs
           });
+        } else if (connectionMode === "gateway") {
+          const sample = await gatewayApi.send(payload);
+          const reading = gatewayTelemetryToReading(sample);
+          setGatewaySamples((current) => [...current.slice(-119), sample]);
+          await saveReadings("gateway", [reading]);
+        } else {
+          lastLocalControlAtRef.current = Date.now();
+          await localCarApi.send(payload);
         }
         return;
       }
       if (message.type === "stop") {
-        if (connectionMode === "local") {
-          lastLocalControlAtRef.current = Date.now();
-          await localCarApi.send({ cmd: "stop", speed: 0, duration_ms: 0 });
-        } else {
-          if (!token) return;
+        if (connectionMode === "cloud") {
+          if (!token || token.startsWith("local-demo:")) return;
           await api.command(token, {
             deviceId: selectedDevice.id,
             baseStationId: selectedDevice.base_station_id,
             action: "stop",
             speed: 0
           });
+        } else if (connectionMode === "gateway") {
+          const sample = await gatewayApi.send({ cmd: "stop", speed: 0, duration_ms: 0 });
+          const reading = gatewayTelemetryToReading(sample);
+          setGatewaySamples((current) => [...current.slice(-119), sample]);
+          await saveReadings("gateway", [reading]);
+        } else {
+          lastLocalControlAtRef.current = Date.now();
+          await localCarApi.send({ cmd: "stop", speed: 0, duration_ms: 0 });
         }
         return;
       }
       if (message.type === "create-patrol") {
-        if (connectionMode === "local") {
-          await localCarApi.send({ cmd: "auto_start" });
-          setNotice("已向本地小车发送自动巡检启动指令");
+        if (connectionMode === "gateway") {
+          const sample = await gatewayApi.send({ cmd: "auto_start" });
+          const reading = gatewayTelemetryToReading(sample);
+          setGatewaySamples((current) => [...current.slice(-119), sample]);
+          await saveReadings("gateway", [reading]);
+          setNotice("已向星闪基站发送自动巡检启动指令");
           return;
         }
-        if (!token) return;
+        if (connectionMode === "car-direct") {
+          await localCarApi.send({ cmd: "auto_start" });
+          setNotice("已向小车直连发送自动巡检启动指令");
+          return;
+        }
+        if (!token || token.startsWith("local-demo:")) return;
         await api.createPatrol(token, {
           deviceId: selectedDevice.id,
           baseStationId: selectedDevice.base_station_id,
@@ -251,16 +415,27 @@ export function MobileConsoleApp() {
         return;
       }
       if (message.type === "refresh-agent") {
-        if (connectionMode === "local") {
-          setNotice("本地联调模式暂不生成云端 Agent 报告");
+        const range = rangeForCache();
+        const summary = summarizeReadingsForAgent(activeReadings, { ...range, maxPoints: 100 });
+        if (!token || token.startsWith("local-demo:")) {
+          setReports((current) => [localAgentReport(activeReadings, connectionMode), ...current].slice(0, 20));
           return;
         }
-        if (!token) return;
-        await api.createReport(token, selectedDevice.id);
-        await refresh();
+        try {
+          const result = await api.analyzeHistory(token, {
+            deviceId: selectedDevice.id,
+            range,
+            source: connectionMode,
+            readings: activeReadings,
+            missingIntervals: summary.missingIntervals
+          });
+          setReports((current) => [result.report, ...current].slice(0, 20));
+        } catch {
+          setReports((current) => [localAgentReport(activeReadings, connectionMode), ...current].slice(0, 20));
+        }
       }
     });
-  }, [connectionMode, guarded, logout, postSnapshot, refresh, selectedDevice.base_station_id, selectedDevice.id, token]);
+  }, [activeReadings, changeConnectionMode, connectionMode, guarded, logout, postSnapshot, rangeForCache, refresh, saveReadings, selectedDevice.base_station_id, selectedDevice.id, token]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent<MobileOpenDesignToHostMessage>) {
@@ -272,7 +447,7 @@ export function MobileConsoleApp() {
     return () => window.removeEventListener("message", onMessage);
   }, [handleBridgeMessage]);
 
-  if (connectionMode !== "local" && (!token || !user)) {
+  if (connectionMode === "cloud" && (!token || !user)) {
     return <Login onLogin={(nextToken, nextUser) => {
       localStorage.setItem("ws63-token", nextToken);
       localStorage.setItem("ws63-user", JSON.stringify(nextUser));

@@ -21,6 +21,7 @@ import { Overview } from "./views/Overview";
 import { Patrol } from "./views/Patrol";
 import type { Tab } from "./views";
 import { localTelemetryToReading, type LocalTelemetrySample } from "./carProtocol";
+import { connectionNotice, normalizeConnectionMode } from "./connectionModes";
 import { getLocalCarUrl, localCarApi, setLocalCarUrl } from "./localCarApi";
 import type { ConnectionMode } from "./types";
 import { buildDashboardViewModel } from "./viewModels";
@@ -52,18 +53,18 @@ export function WebConsoleApp() {
   const [audits, setAudits] = useState<AuditLog[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("ws63-car-001");
   const [notice, setNotice] = useState("");
-  const [connectionMode, setConnectionMode] = useState<ConnectionMode>(() => localStorage.getItem("ws63-connection-mode") === "local" ? "local" : "cloud");
+  const [connectionMode, setConnectionMode] = useState<ConnectionMode>(() => normalizeConnectionMode(localStorage.getItem("ws63-connection-mode")));
   const [localCarUrl, setLocalCarUrlState] = useState(getLocalCarUrl());
   const [localSamples, setLocalSamples] = useState<LocalTelemetrySample[]>([]);
 
-  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0] ?? (connectionMode === "local" ? localFallbackDevice : undefined);
-  const activeReadings = connectionMode === "local" ? localSamples.map(localTelemetryToReading) : readings;
+  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0] ?? (connectionMode === "car-direct" ? localFallbackDevice : undefined);
+  const activeReadings = connectionMode === "car-direct" ? localSamples.map(localTelemetryToReading) : readings;
 
   function changeConnectionMode(mode: ConnectionMode) {
     localStorage.setItem("ws63-connection-mode", mode);
     setConnectionMode(mode);
-    if (mode === "local") setSelectedDeviceId(localFallbackDevice.id);
-    setNotice(mode === "local" ? "已切换到本地小车模式，请连接 WS63E_ENV_CAR 热点" : "已切换到云端基站模式");
+    if (mode === "car-direct") setSelectedDeviceId(localFallbackDevice.id);
+    setNotice(mode === "gateway" ? "浏览器无法直接发送 UDP，请在 APK 中使用星闪基站模式。" : connectionNotice(mode));
   }
 
   function changeLocalCarUrl(value: string) {
@@ -91,7 +92,7 @@ export function WebConsoleApp() {
   }
 
   async function refresh(nextToken = token, nextDeviceId = selectedDeviceId) {
-    if (!nextToken || connectionMode === "local") return;
+    if (!nextToken || connectionMode !== "cloud") return;
     const dashboard = await api.dashboard(nextToken, nextDeviceId);
     setDevices(dashboard.devices);
     setBaseStations(dashboard.baseStations);
@@ -109,7 +110,7 @@ export function WebConsoleApp() {
   }, [token, selectedDeviceId, user?.role, connectionMode]);
 
   useEffect(() => {
-    if (connectionMode !== "local") return;
+    if (connectionMode !== "car-direct") return;
     let cancelled = false;
     async function pollLocalCar() {
       try {
@@ -130,7 +131,7 @@ export function WebConsoleApp() {
   }, [connectionMode, localCarUrl]);
 
   useEffect(() => {
-    if (!token || connectionMode === "local") return;
+    if (!token || connectionMode !== "cloud") return;
     const events = new EventSource(`${apiBaseUrl()}/api/events?token=${encodeURIComponent(token)}`);
     events.addEventListener("telemetry", (event) => {
       const payload = JSON.parse((event as MessageEvent).data).data as { readings: Reading[]; report: AgentReport };

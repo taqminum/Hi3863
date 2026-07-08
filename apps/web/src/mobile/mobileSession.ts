@@ -1,11 +1,13 @@
 import type { ConnectionMode } from "../types";
 
 export function defaultMobileConnectionMode(storedMode: string | null): ConnectionMode {
-  return storedMode === "cloud" ? "cloud" : "local";
+  if (storedMode === "cloud" || storedMode === "gateway" || storedMode === "car-direct") return storedMode;
+  if (storedMode === "local") return "gateway";
+  return "cloud";
 }
 
 export function mobileSessionAllowsLocalControl(connectionMode: ConnectionMode, token: string | null): boolean {
-  return connectionMode === "local" || Boolean(token);
+  return connectionMode === "gateway" || connectionMode === "car-direct" || Boolean(token);
 }
 
 export function shouldPollLocalTelemetry(nowMs: number, lastControlAtMs: number, quietMs = 800): boolean {

@@ -1,6 +1,7 @@
 import { BatteryMedium, Cpu, Database, Gamepad2, LayoutDashboard, ListChecks, LogOut, Moon, Sun, Wifi } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { DeviceRecord, User } from "../api";
+import { connectionModeLabel, transportLabel } from "../connectionModes";
 import type { ConnectionMode } from "../types";
 import { roleName } from "../utils";
 import type { Tab } from "../views";
@@ -66,11 +67,11 @@ export function Shell(props: ShellProps) {
           <div className="top-bar">
             <div className="top-bar-left">
               <h1 data-od-id="app-title">WS63E 控制台</h1>
-              <div className="cloud-status"><div className="status-dot" />{props.connectionMode === "cloud" ? "云端基站" : "本地直连"}</div>
+              <div className="cloud-status"><div className="status-dot" />{connectionModeLabel(props.connectionMode)}</div>
             </div>
             <div className="sys-status">
               <button className="theme-btn" onClick={toggleTheme} aria-label="切换深浅色主题">{light ? <Moon width={16} height={16} /> : <Sun width={16} height={16} />}</button>
-              <div className="sys-pill"><Wifi width={14} height={14} />{props.connectionMode === "cloud" ? "TCP" : "SoftAP"}</div>
+              <div className="sys-pill"><Wifi width={14} height={14} />{transportLabel(props.connectionMode)}</div>
               <div className="sys-pill"><BatteryMedium width={14} height={14} />{clock}</div>
               <div className="sys-pill user-pill">{props.user.displayName} / {roleName(props.user.role)}</div>
               <button className="theme-btn" onClick={props.onLogout} aria-label="退出登录"><LogOut width={16} height={16} /></button>
@@ -79,10 +80,11 @@ export function Shell(props: ShellProps) {
 
           <div className="control-strip">
             <select value={props.connectionMode} onChange={(event) => props.onConnectionModeChange(event.target.value as ConnectionMode)} aria-label="连接模式">
-              <option value="cloud">云端基站</option>
-              <option value="local">本地小车</option>
+              <option value="cloud">云服务器</option>
+              <option value="gateway">星闪基站 Wi-Fi</option>
+              <option value="car-direct">小车直连</option>
             </select>
-            {props.connectionMode === "local" ? (
+            {props.connectionMode === "car-direct" ? (
               <input value={props.localCarUrl} onChange={(event) => props.onLocalCarUrlChange(event.target.value)} aria-label="本地小车地址" />
             ) : (
               <select value={props.selectedDeviceId} onChange={(event) => props.onDeviceChange(event.target.value)} aria-label="选择设备">

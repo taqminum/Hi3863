@@ -11,31 +11,37 @@ APK/Web -> 云服务器 API -> 星闪基站 -> SLE -> WS63E 小车
 WS63E 小车 -> SLE -> 星闪基站 -> 云服务器 API -> APK/Web
 ```
 
-本地调试链路：
+APK 还支持两条兜底链路：
 
 ```text
-APK/Web -> 小车 SoftAP HTTP -> WS63E 小车
+APK -> 星闪基站 Wi-Fi UDP -> SLE -> WS63E 小车
+APK -> 小车 SoftAP HTTP -> WS63E 小车
 ```
 
-小车 SoftAP 只作为调试和兜底，默认地址仍是 `http://192.168.5.1:8080`。
+默认先走云端；云端不可达时可以切到星闪基站 Wi-Fi；基站也不可达时再切到小车 SoftAP。小车 SoftAP 只作为调试和兜底，默认地址仍是 `http://192.168.5.1:8080`。
 
 ## 当前小车可直接执行的控制 payload
 
-软件侧现在发送给基站队列和本地小车 HTTP 的控制格式都是 JSON：
+软件侧现在发送给基站队列、星闪基站 UDP 和本地小车调试链路的控制格式都是 JSON，正式摇杆控制以差速 `drive` 为主：
 
 ```json
+{"cmd":"drive","left":70,"right":0,"duration_ms":350}
+{"cmd":"drive","left":0,"right":70,"duration_ms":350}
+{"cmd":"drive","left":70,"right":70,"duration_ms":350}
+{"cmd":"drive","left":-50,"right":-50,"duration_ms":350}
+{"cmd":"stop","speed":0,"duration_ms":0}
 {"cmd":"forward","speed":60,"duration_ms":350}
 {"cmd":"backward","speed":40,"duration_ms":350}
 {"cmd":"left","speed":50,"duration_ms":350}
 {"cmd":"right","speed":50,"duration_ms":350}
-{"cmd":"stop","speed":0,"duration_ms":0}
 {"cmd":"auto_start"}
 {"cmd":"auto_stop"}
 ```
 
 约束：
 
-- `cmd`：`forward/backward/left/right/stop/auto_start/auto_stop`
+- `cmd`：正式控制使用 `drive/stop/auto_start/auto_stop`；`forward/backward/left/right` 仅作为旧命令兼容。
+- `left/right`：差速左右轮百分比，范围 `-100..100`。
 - `speed`：`0..100`
 - `duration_ms`：`0..3000`
 - APK 摇杆按住时约每 `300ms` 续发一次命令。
@@ -62,7 +68,7 @@ X-Device-Key: <DEVICE_INGEST_KEY>
       "base_station_id": "sle-base-001",
       "action": "drive",
       "speed": 0,
-      "payload": "{\"cmd\":\"right\",\"speed\":70,\"duration_ms\":350}",
+      "payload": "{\"cmd\":\"drive\",\"left\":70,\"right\":0,\"duration_ms\":350}",
       "status": "pulled",
       "created_at": "2026-07-08T10:00:00.000Z",
       "expires_at": "2026-07-08T10:00:02.000Z"
@@ -74,7 +80,7 @@ X-Device-Key: <DEVICE_INGEST_KEY>
 说明：
 
 - `action` 可能仍是 `drive`，表示来源是 APK 摇杆。
-- `payload` 已经是当前小车可执行的 JSON，基站只需要原样通过 SLE 发给小车。
+- `payload` 已经是当前小车可执行的差速 JSON，基站只需要原样通过 SLE 发给小车。
 - `drive` 命令有效期约 `2s`，过期后不会再被基站拉取。
 - 新的 `drive` 会取消同一设备同一基站的旧 `drive`，避免摇杆拖动堆积。
 - `stop` 会取消旧 `drive` 并保留自身，保证松手停车优先。
@@ -171,6 +177,66 @@ Content-Type: application/json
 
 ## 差速摇杆协议
 
+云端会长期保存这些环境数据，APK 从云端拉取历史曲线。曲线严格按时间段展示：如果某段时间没有收到 telemetry，App 会让曲线断开，不会自动补线。
+
+## APK 直连星闪基站 Wi-Fi UDP
+
+当 APK 选择“星闪基站 Wi-Fi”时，软件侧已经实现 Android UDP 插件，会访问：
+
+```text
+udp://255.255.255.255:8888
+```
+
+手机发送：
+
+```text
+GET
+```
+
+基站返回当前遥测，推荐格式：
+
+```json
+{
+  "seq": 42,
+  "temp_x10": 253,
+  "humi_x10": 618,
+  "light_x10": 845,
+  "motion": 1,
+  "patrol": 0,
+  "err": 0,
+  "rssi": -48,
+  "cached_count": 0
+}
+```
+
+手机发送遥控时，UDP 内容就是当前小车可执行的 JSON：
+
+```json
+{"cmd":"drive","left":70,"right":0,"duration_ms":2200}
+```
+
+基站处理建议：
+
+1. 收到 `GET` 时返回最近一次小车 SLE telemetry。
+2. 收到 JSON 控制命令时，原样通过 SLE 发给小车。
+3. 发送成功后返回最新 telemetry JSON，至少要包含 `seq/temp_x10/humi_x10/light_x10/motion/patrol/err`。
+4. 附加 `rssi` 和 `cached_count`，用于 App 展示星闪链路质量和弱网缓存条数。
+5. UDP 不适合长期历史，长期数据仍必须通过云端 telemetry 上传保存。
+
+## App 历史 Agent 分析
+
+APK 会把当前手机实际拿到的历史点和缺口区间发给云端：
+
+```http
+POST /api/agent/analyze-history
+Authorization: Bearer <user-token>
+Content-Type: application/json
+```
+
+固件侧不需要接入模型，也不要持有模型 API Key。Agent 只依赖 telemetry 的时间戳、温湿度、光照、RSSI 和缓存条数。缺数据的时间段由 App 识别并作为 `data_gap` 证据提交。
+
+## 差速摇杆协议
+
 小车当前支持 JSON 差速协议。继续使用 JSON，不使用旧的 `DRIVE:` 文本：
 
 ```json
@@ -196,6 +262,7 @@ Content-Type: application/json
 4. APK 摇杆按住时，小车持续动作；松手后小车停止。
 5. 基站回执 `executed` 后，APK/Web 命令历史从 `pulled` 变为 `executed`。
 6. 基站上传 telemetry 后，APK 总览页温湿度、光照和 RSSI 曲线更新。
+7. APK 切换到基站 Wi-Fi 后，UDP `GET` 能返回当前遥测，遥控 JSON 能通过 SLE 到达小车。
 
 ## 相关文件
 

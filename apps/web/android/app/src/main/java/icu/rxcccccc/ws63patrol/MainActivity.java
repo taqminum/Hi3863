@@ -1,7 +1,7 @@
 package icu.rxcccccc.ws63patrol;
 
-import com.getcapacitor.BridgeActivity;
 import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     @Override

@@ -1,1 +1,1 @@
-export type ConnectionMode = "cloud" | "local";
+export type ConnectionMode = "cloud" | "gateway" | "car-direct";
