@@ -22,9 +22,8 @@ import { Patrol } from "./views/Patrol";
 import type { Tab } from "./views";
 import { localTelemetryToReading, type LocalTelemetrySample } from "./carProtocol";
 import { getLocalCarUrl, localCarApi, setLocalCarUrl } from "./localCarApi";
+import type { ConnectionMode } from "./types";
 import { buildDashboardViewModel } from "./viewModels";
-
-export type ConnectionMode = "cloud" | "local";
 
 const localFallbackDevice: DeviceRecord = {
   id: "ws63-car-001",

@@ -12,9 +12,9 @@ import {
   type Reading,
   type User
 } from "../api";
-import type { ConnectionMode } from "../App";
 import { buildCompatPayloadFromWheels, localTelemetryToReading, type LocalTelemetrySample } from "../carProtocol";
 import { localCarApi } from "../localCarApi";
+import type { ConnectionMode } from "../types";
 import { Login } from "../views/Login";
 import prototypeHtml from "../open-design/ws63e-inspection-app-full-8.html?raw";
 import {

@@ -1,7 +1,7 @@
 import { BatteryMedium, Cpu, Database, Gamepad2, LayoutDashboard, ListChecks, LogOut, Moon, Sun, Wifi } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { DeviceRecord, User } from "../api";
-import type { ConnectionMode } from "../App";
+import type { ConnectionMode } from "../types";
 import { roleName } from "../utils";
 import type { Tab } from "../views";
 

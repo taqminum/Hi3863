@@ -9,7 +9,7 @@ import type {
   RiskLevel,
   User
 } from "./api";
-import type { ConnectionMode } from "./App";
+import type { ConnectionMode } from "./types";
 import { formatTime, normalizeReport } from "./utils";
 
 export interface DashboardViewModel {

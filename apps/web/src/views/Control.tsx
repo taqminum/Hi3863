@@ -1,7 +1,6 @@
 import { Crosshair, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type ControlCommand, type DeviceRecord } from "../api";
-import type { ConnectionMode } from "../App";
 import {
   buildCloudControlBody,
   buildCompatPayloadFromWheels,
@@ -15,6 +14,7 @@ import {
   type WheelOutput
 } from "../carProtocol";
 import { localCarApi } from "../localCarApi";
+import type { ConnectionMode } from "../types";
 import { compactTime } from "../viewModels";
 
 function vectorFromPointer(element: HTMLDivElement, clientX: number, clientY: number): JoystickVector {
