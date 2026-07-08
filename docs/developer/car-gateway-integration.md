@@ -1,6 +1,6 @@
 # 小车与星闪基站对接交接文档
 
-本文档给固件侧同学使用。软件侧已经对齐当前小车固件协议：Web/APK 可以继续使用摇杆交互，但进入小车或基站的最终 `payload` 会降级为当前小车能解析的 JSON 方向命令。固件侧暂时不用为了本次联调立刻实现差速 `drive(left,right)`，后续如果时间充足再扩展。
+本文档给固件侧同学使用。软件侧已经对齐当前小车固件协议：APK 可以继续使用摇杆交互，但进入小车或基站的最终 `payload` 会降级为当前小车能解析的 JSON 方向命令。固件侧暂时不用为了本次联调立刻实现差速 `drive(left,right)`，后续如果时间充足再扩展。
 
 ## 当前推荐链路
 
@@ -11,13 +11,14 @@ APK/Web -> 云服务器 API -> 星闪基站 -> SLE -> WS63E 小车
 WS63E 小车 -> SLE -> 星闪基站 -> 云服务器 API -> APK/Web
 ```
 
-本地调试链路：
+APK 还支持两条兜底链路：
 
 ```text
-APK/Web -> 小车 SoftAP HTTP -> WS63E 小车
+APK -> 星闪基站 Wi-Fi UDP -> SLE -> WS63E 小车
+APK -> 小车 SoftAP HTTP -> WS63E 小车
 ```
 
-小车 SoftAP 只作为调试和兜底，默认地址仍是 `http://192.168.5.1:8080`。
+默认先走云端；云端不可达时可以切到星闪基站 Wi-Fi；基站也不可达时再切到小车 SoftAP。小车 SoftAP 只作为调试和兜底，默认地址仍是 `http://192.168.5.1:8080`。
 
 ## 当前小车可直接执行的控制 payload
 
@@ -169,6 +170,64 @@ X-Device-Key: <DEVICE_INGEST_KEY>
 Content-Type: application/json
 ```
 
+云端会长期保存这些环境数据，APK 从云端拉取历史曲线。曲线严格按时间段展示：如果某段时间没有收到 telemetry，App 会让曲线断开，不会自动补线。
+
+## APK 直连星闪基站 Wi-Fi UDP
+
+当 APK 选择“星闪基站 Wi-Fi”时，软件侧已经实现 Android UDP 插件，会访问：
+
+```text
+udp://192.168.6.1:8888
+```
+
+手机发送：
+
+```text
+GET
+```
+
+基站返回当前遥测，推荐格式：
+
+```json
+{
+  "seq": 42,
+  "temp_x10": 253,
+  "humi_x10": 618,
+  "light_x10": 845,
+  "motion": 1,
+  "patrol": 0,
+  "err": 0,
+  "rssi": -48,
+  "cached_count": 0
+}
+```
+
+手机发送遥控时，UDP 内容就是当前小车可执行的 JSON：
+
+```json
+{"cmd":"forward","speed":60,"duration_ms":350}
+```
+
+基站处理建议：
+
+1. 收到 `GET` 时返回最近一次小车 SLE telemetry。
+2. 收到 JSON 控制命令时，原样通过 SLE 发给小车。
+3. 发送成功后返回最新 telemetry JSON，至少要包含 `seq/temp_x10/humi_x10/light_x10/motion/patrol/err`。
+4. 附加 `rssi` 和 `cached_count`，用于 App 展示星闪链路质量和弱网缓存条数。
+5. UDP 不适合长期历史，长期数据仍必须通过云端 telemetry 上传保存。
+
+## App 历史 Agent 分析
+
+APK 会把当前手机实际拿到的历史点和缺口区间发给云端：
+
+```http
+POST /api/agent/analyze-history
+Authorization: Bearer <user-token>
+Content-Type: application/json
+```
+
+固件侧不需要接入模型，也不要持有模型 API Key。Agent 只依赖 telemetry 的时间戳、温湿度、光照、RSSI 和缓存条数。缺数据的时间段由 App 识别并作为 `data_gap` 证据提交。
+
 ## 未来差速摇杆扩展
 
 如果后续要让小车支持更细的转向幅度，建议新增 JSON 协议，而不是使用旧的 `DRIVE:` 文本：
@@ -196,6 +255,7 @@ Content-Type: application/json
 4. APK 摇杆按住时，小车持续动作；松手后小车停止。
 5. 基站回执 `executed` 后，APK/Web 命令历史从 `pulled` 变为 `executed`。
 6. 基站上传 telemetry 后，APK 总览页温湿度、光照和 RSSI 曲线更新。
+7. APK 切换到基站 Wi-Fi 后，UDP `GET` 能返回当前遥测，遥控 JSON 能通过 SLE 到达小车。
 
 ## 相关文件
 

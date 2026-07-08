@@ -8,9 +8,12 @@ import type {
   Reading,
   User
 } from "../api";
+import { connectionModeLabel } from "../connectionModes.ts";
+import { buildTimeSeries } from "../historySeries.ts";
 import type { ConnectionMode } from "../types";
 
 export type MobileOpenDesignTab = "overview" | "control" | "tasks" | "data" | "manage";
+export type MobileHistoryRange = "1H" | "24H" | "7D";
 
 export interface MobileOpenDesignSnapshot {
   userLabel: string;
@@ -29,11 +32,14 @@ export interface MobileOpenDesignSnapshot {
   taskStatus: string;
   agentSummary: string;
   notice: string;
+  connectionMode: ConnectionMode;
+  historyRange: MobileHistoryRange;
+  seriesLabels: string[];
   series: {
-    rssi: number[];
-    temperature: number[];
-    humidity: number[];
-    lightness: number[];
+    rssi: Array<number | null>;
+    temperature: Array<number | null>;
+    humidity: Array<number | null>;
+    lightness: Array<number | null>;
   };
 }
 
@@ -42,6 +48,8 @@ export type MobileOpenDesignToHostMessage =
   | { source: "ws63-mobile-open-design"; type: "active-tab"; tab: MobileOpenDesignTab }
   | { source: "ws63-mobile-open-design"; type: "drive"; left: number; right: number; speed: number; durationMs: number }
   | { source: "ws63-mobile-open-design"; type: "stop" }
+  | { source: "ws63-mobile-open-design"; type: "connection-mode"; mode: ConnectionMode }
+  | { source: "ws63-mobile-open-design"; type: "history-range"; range: MobileHistoryRange }
   | { source: "ws63-mobile-open-design"; type: "create-patrol"; template: "standard" }
   | { source: "ws63-mobile-open-design"; type: "refresh-agent" }
   | { source: "ws63-mobile-open-design"; type: "logout" };
@@ -64,6 +72,7 @@ export interface MobileOpenDesignSnapshotInput {
   reports: AgentReport[];
   audits: AuditLog[];
   notice: string;
+  historyRange: MobileHistoryRange;
 }
 
 const landscapePatch = `<style id="ws63-mobile-landscape-patch">
@@ -107,6 +116,31 @@ body[data-active-view="view-control"] #view-control {
 }
 body[data-active-view="view-control"] .speed-value-display {
   transform: translateY(-12px);
+}
+.ws63-connection-switch {
+  position: absolute;
+  top: 10px;
+  left: 96px;
+  z-index: 180;
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(8, 12, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.ws63-connection-switch button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #8E9BAE;
+  font: 600 11px system-ui, sans-serif;
+}
+.ws63-connection-switch button.active {
+  color: #fff;
+  background: rgba(0, 194, 255, 0.22);
 }
 </style>`;
 
@@ -258,9 +292,56 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     if (!canvas || !window.Chart || !Array.isArray(values)) return;
     const chart = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
     if (!chart || !chart.data || !chart.data.datasets || !chart.data.datasets[0]) return;
-    chart.data.labels = values.map((_, index) => String(index + 1));
+    chart.data.labels = Array.isArray(window.__ws63SeriesLabels) ? window.__ws63SeriesLabels : values.map((_, index) => String(index + 1));
     chart.data.datasets[0].data = values;
+    chart.data.datasets[0].spanGaps = false;
+    chart.options.spanGaps = false;
     chart.update("none");
+  }
+
+  function ensureConnectionSwitch() {
+    if (document.getElementById("ws63-connection-switch")) return;
+    const root = document.querySelector(".device-container") || document.body;
+    const switcher = document.createElement("div");
+    switcher.id = "ws63-connection-switch";
+    switcher.className = "ws63-connection-switch";
+    switcher.innerHTML = [
+      '<button id="ws63-mode-cloud" data-mode="cloud">云端</button>',
+      '<button id="ws63-mode-gateway" data-mode="gateway">基站</button>',
+      '<button id="ws63-mode-car-direct" data-mode="car-direct">小车</button>'
+    ].join("");
+    switcher.querySelectorAll("button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.mode;
+        send("connection-mode", { mode });
+      });
+    });
+    root.appendChild(switcher);
+  }
+
+  function updateConnectionSwitch(mode) {
+    ensureConnectionSwitch();
+    document.querySelectorAll("#ws63-connection-switch button").forEach((button) => {
+      button.classList.toggle("active", button.dataset.mode === mode);
+    });
+  }
+
+  function updateHistoryRange(range) {
+    document.querySelectorAll("#data-time-toggles .time-btn").forEach((button) => {
+      button.classList.toggle("active", button.dataset.range === range);
+    });
+  }
+
+  function attachHistoryRangeBridge() {
+    document.querySelectorAll("#data-time-toggles .time-btn").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const range = button.dataset.range || "1H";
+        updateHistoryRange(range);
+        send("history-range", { range });
+      }, true);
+    });
   }
 
   function setActiveView(target) {
@@ -351,6 +432,9 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
 
   function applySnapshot(snapshot) {
     if (!snapshot) return;
+    window.__ws63SeriesLabels = snapshot.seriesLabels;
+    updateConnectionSwitch(snapshot.connectionMode);
+    updateHistoryRange(snapshot.historyRange);
     text("[data-od-id='app-title']", "WS63E 控制台");
     patchByText("dBm", snapshot.rssiLabel);
     patchByText("°C", snapshot.temperatureLabel);
@@ -378,10 +462,12 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
 
   window.addEventListener("load", () => {
     setActiveView("view-overview");
+    ensureConnectionSwitch();
     document.querySelectorAll(".nav-item").forEach((item) => {
       item.addEventListener("click", () => setActiveView(item.dataset.target));
     });
     attachControlBridge();
+    attachHistoryRangeBridge();
     send("ready");
   });
 
@@ -437,9 +523,44 @@ function normalizeAgentReport(report?: AgentReport): { summary: string } {
   };
 }
 
-function series(readings: Reading[], field: "rssi" | "temperature" | "humidity" | "lightness"): number[] {
-  const values = readings.slice(-24).map((reading) => Number(reading[field] ?? 0));
-  return values.length > 0 ? values : Array.from({ length: 24 }, () => 0);
+function rangeDurationMs(range: MobileHistoryRange): number {
+  if (range === "7D") return 7 * 24 * 60 * 60 * 1000;
+  if (range === "24H") return 24 * 60 * 60 * 1000;
+  return 60 * 60 * 1000;
+}
+
+function rangeBucketMs(range: MobileHistoryRange): number {
+  if (range === "7D") return 6 * 60 * 60 * 1000;
+  if (range === "24H") return 60 * 60 * 1000;
+  return 150_000;
+}
+
+function snapshotRange(readings: Reading[], range: MobileHistoryRange): { from: string; to: string; bucketMs: number } {
+  const bucketMs = rangeBucketMs(range);
+  const latest = readings
+    .map((reading) => Date.parse(reading.recordedAt))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)
+    .at(-1);
+  const now = Date.now();
+  const durationMs = rangeDurationMs(range);
+  const end = latest && now - latest < durationMs ? now : (latest ?? now) + bucketMs;
+  return {
+    from: new Date(end - durationMs).toISOString(),
+    to: new Date(end).toISOString(),
+    bucketMs
+  };
+}
+
+function snapshotSeries(readings: Reading[], field: "rssi" | "temperature" | "humidity" | "lightness", historyRange: MobileHistoryRange) {
+  const range = snapshotRange(readings, historyRange);
+  return buildTimeSeries({
+    readings,
+    field,
+    from: range.from,
+    to: range.to,
+    bucketMs: range.bucketMs
+  });
 }
 
 export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInput): MobileOpenDesignSnapshot {
@@ -450,11 +571,15 @@ export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInp
   const task = input.tasks[0];
   const rssi = latest?.rssi ?? base?.last_rssi;
   const cachedCount = latest?.cachedCount ?? base?.cached_count ?? 0;
+  const temperatureSeries = snapshotSeries(input.readings, "temperature", input.historyRange);
+  const humiditySeries = snapshotSeries(input.readings, "humidity", input.historyRange);
+  const lightnessSeries = snapshotSeries(input.readings, "lightness", input.historyRange);
+  const rssiSeries = snapshotSeries(input.readings, "rssi", input.historyRange);
 
   return {
     userLabel: input.user.displayName || input.user.username,
     roleLabel: roleLabel(input.user.role),
-    connectionModeLabel: input.connectionMode === "local" ? "本地直连" : "云端基站",
+    connectionModeLabel: connectionModeLabel(input.connectionMode),
     deviceName: input.selectedDevice?.name || "WS63E-巡检车-01",
     deviceStatus: statusLabel(input.selectedDevice?.status),
     baseStationName: base?.name || "SLE 基站",
@@ -468,11 +593,14 @@ export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInp
     taskStatus: task ? `${task.name} / ${task.status}` : "--",
     agentSummary: report.summary,
     notice: input.notice,
+    connectionMode: input.connectionMode,
+    historyRange: input.historyRange,
+    seriesLabels: temperatureSeries.map((point) => point.label),
     series: {
-      rssi: series(input.readings, "rssi"),
-      temperature: series(input.readings, "temperature"),
-      humidity: series(input.readings, "humidity"),
-      lightness: series(input.readings, "lightness")
+      rssi: rssiSeries.map((point) => point.value),
+      temperature: temperatureSeries.map((point) => point.value),
+      humidity: humiditySeries.map((point) => point.value),
+      lightness: lightnessSeries.map((point) => point.value)
     }
   };
 }

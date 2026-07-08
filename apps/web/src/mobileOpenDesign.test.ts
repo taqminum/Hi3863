@@ -19,6 +19,27 @@ test("injects real interaction bridge for joystick repeat, task creation and cha
   assert.match(result, /window\.Chart\.getChart/);
 });
 
+test("injects connection mode controls for cloud gateway and car direct", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body><div class=\"device-container\"></div></body></html>");
+  assert.match(result, /ws63-mode-cloud/);
+  assert.match(result, /ws63-mode-gateway/);
+  assert.match(result, /ws63-mode-car-direct/);
+  assert.match(result, /send\("connection-mode", \{ mode \}\)/);
+});
+
+test("bridge keeps chart null values as gaps", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /chart\.options\.spanGaps = false/);
+  assert.match(result, /snapshot\.seriesLabels/);
+});
+
+test("bridge routes time range buttons to host instead of mock chart data", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body><div id=\"data-time-toggles\"><button class=\"time-btn\" data-range=\"24H\"></button></div></body></html>");
+  assert.match(result, /attachHistoryRangeBridge/);
+  assert.match(result, /event\.stopImmediatePropagation\(\)/);
+  assert.match(result, /send\("history-range", \{ range \}\)/);
+});
+
 test("injects touch isolation before Open Design scripts and routes joystick touches by role", () => {
   const html = "<html><head><script src=\"https://unpkg.com/lucide@latest\"></script></head><body></body></html>";
   const result = buildMobileOpenDesignSrcDoc(html);
@@ -56,6 +77,7 @@ test("builds readable fallback snapshot when telemetry is empty", () => {
   const snapshot = buildMobileOpenDesignSnapshot({
     user,
     connectionMode: "cloud",
+    historyRange: "1H",
     selectedDevice,
     devices: [selectedDevice],
     baseStations: [],
@@ -68,6 +90,7 @@ test("builds readable fallback snapshot when telemetry is empty", () => {
   });
 
   assert.equal(snapshot.deviceName, "WS63E-巡检车-01");
+  assert.equal(snapshot.historyRange, "1H");
   assert.equal(snapshot.temperatureLabel, "--°C");
   assert.equal(snapshot.series.temperature.length, 24);
 });

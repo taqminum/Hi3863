@@ -70,9 +70,11 @@ export function Control({
     inFlight.current = true;
     setSending(true);
     try {
-      if (connectionMode === "local") {
+      if (connectionMode === "car-direct") {
         await localCarApi.send(buildCompatPayloadFromWheels(nextWheels, JOYSTICK_COMMAND_DURATION_MS));
         onNotice(`已发送本地小车控制：${wheelSummary(nextWheels)}`);
+      } else if (connectionMode === "gateway") {
+        onNotice("星闪基站 UDP 遥控请在 Android APK 中使用。");
       } else {
         const result = await api.command(token, buildCloudControlBody(device.id, device.base_station_id, nextWheels, JOYSTICK_COMMAND_DURATION_MS));
         onNotice(`命令已进入基站队列：${result.command.payload}`);
@@ -145,7 +147,7 @@ export function Control({
           <div className="camera-feed">
             <div className="camera-badge"><div className="status-dot" />CAM-WS-01 直播流</div>
             <div className="camera-hud"><Crosshair width={36} height={36} /></div>
-            <div className="camera-overlay"><span>LAT: {connectionMode === "cloud" ? "云端队列" : "本地直连"}</span><span>{device?.name ?? "未选择设备"}</span></div>
+            <div className="camera-overlay"><span>LAT: {connectionMode === "cloud" ? "云端队列" : connectionMode === "gateway" ? "基站 UDP" : "本地直连"}</span><span>{device?.name ?? "未选择设备"}</span></div>
           </div>
           <div className="command-log">
             <div className="cmd-line"><span className="cmd-time">[{new Date().toLocaleTimeString("zh-CN", { hour12: false })}]</span><span className="cmd-info">系统: 横屏遥控控制舱已就绪</span></div>

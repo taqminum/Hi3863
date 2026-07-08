@@ -4,11 +4,11 @@
 
 ## 服务组成
 
-- `apps/server`：Node.js API、SQLite、登录、权限、审计、设备管理、基站遥测接入、命令队列、巡检任务、Agent 规则分析、SSE 实时推送。
+- `apps/server`：Node.js API、SQLite、登录、权限、审计、设备管理、基站遥测接入、命令队列、巡检任务、Agent 规则分析、OpenAI-compatible 历史数据分析、SSE 实时推送。
 - `apps/web`：React Web 管理端，可用 Capacitor 打包为 Android APK。
 - 星闪基站：通过 SLE 与小车通信，通过云端 API 上传遥测、拉取控制命令和巡检任务。
 
-手机端和 Web 端只连接云服务器，不直接连接小车局域网。当前先支持单车 `ws63-car-001` 和单基站 `sle-base-001`，接口与数据模型保留多车、多基站、多用户扩展。
+Web 端默认作为云端验收和基站信息查看入口。APK 端支持三种链路：默认云服务器、星闪基站 Wi-Fi UDP、小车 SoftAP HTTP 直连。当前先支持单车 `ws63-car-001` 和单基站 `sle-base-001`，接口与数据模型保留多车、多基站、多用户扩展。
 
 ## 当前云端路径
 
@@ -68,12 +68,27 @@ powershell -ExecutionPolicy Bypass -File deploy/smoke.ps1 -BaseUrl http://localh
 PORT=8787
 JWT_SECRET=<随机强密钥>
 DEVICE_INGEST_KEY=<随机强密钥>
-DATABASE_PATH=./data/ws63-platform.sqlite
+DB_PATH=./data/ws63-platform.sqlite
 CLOUD_HOST=101.132.21.134
 CLOUD_DOMAIN=rxcccccc.icu
+OPENAI_AGENT_ENABLED=0
+OPENAI_BASE_URL=https://aigw.saurlax.com/v1
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 ```
 
-基站密钥只保存在 `.env` 和交付说明中，不提交源码。
+基站密钥和 OpenAI-compatible API Key 只保存在 `.env` 和交付说明中，不提交源码。未设置 `OPENAI_AGENT_ENABLED=1` 或 `OPENAI_API_KEY` 时，Agent 自动使用本地规则引擎兜底，不影响演示。
+
+启用模型分析时，在云端 `/home/rxcccccc/ws63-platform/apps/server/.env` 中追加：
+
+```env
+OPENAI_AGENT_ENABLED=1
+OPENAI_BASE_URL=https://aigw.saurlax.com/v1
+OPENAI_API_KEY=<你的网关 key>
+OPENAI_MODEL=<兼容 chat.completions 的模型名>
+```
+
+不要把 `OPENAI_API_KEY` 写入 APK 或 Web 构建变量。APK 只把历史数据发给云端 `/api/agent/analyze-history`，由后端调用模型。
 
 ## APK 构建
 
@@ -94,6 +109,14 @@ APK 输出路径：
 ```text
 apps/web/android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+APK 内置链路选择：
+
+- 云服务器：`https://www.rxcccccc.icu/ws63-api`，可读取长期云端历史。
+- 星闪基站 Wi-Fi：`udp://192.168.6.1:8888`，用于基站附近短历史和遥控。
+- 小车直连：`http://192.168.5.1:8080`，用于最后兜底实时遥测和遥控。
+
+三种链路写入同一份手机本地 IndexedDB 缓存。历史曲线严格按时间段渲染，未收到数据的时间桶保持空白，不补线。
 
 ## 基站 API
 

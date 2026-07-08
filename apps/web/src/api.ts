@@ -83,6 +83,8 @@ export interface AgentReport {
   summary: string;
   suggestions?: string[];
   suggestions_json?: string;
+  evidence?: Array<{ code: string; label: string; value: number | string; threshold?: number | string }>;
+  evidence_json?: string;
   createdAt?: string;
   created_at?: string;
 }
@@ -191,8 +193,14 @@ export const api = {
   baseStations(token: string) {
     return request<{ baseStations: BaseStationRecord[] }>("/api/base-stations", token);
   },
-  readings(token: string, deviceId: string) {
-    return request<{ readings: Reading[] }>(`/api/readings?deviceId=${encodeURIComponent(deviceId)}&limit=160`, token);
+  readings(token: string, deviceId: string, options: { from?: string; to?: string; limit?: number } = {}) {
+    const params = new URLSearchParams({
+      deviceId,
+      limit: String(options.limit ?? 160)
+    });
+    if (options.from) params.set("from", options.from);
+    if (options.to) params.set("to", options.to);
+    return request<{ readings: Reading[] }>(`/api/readings?${params.toString()}`, token);
   },
   commands(token: string, deviceId: string) {
     return request<{ commands: ControlCommand[] }>(`/api/commands?deviceId=${encodeURIComponent(deviceId)}&limit=50`, token);
@@ -213,6 +221,18 @@ export const api = {
     return request<{ report: AgentReport }>("/api/agent-reports/current", token, {
       method: "POST",
       body: JSON.stringify({ deviceId })
+    });
+  },
+  analyzeHistory(token: string, body: {
+    deviceId: string;
+    range: { from: string; to: string };
+    source: string;
+    readings: Reading[];
+    missingIntervals: Array<{ from: string; to: string; durationMs: number }>;
+  }) {
+    return request<{ report: AgentReport }>("/api/agent/analyze-history", token, {
+      method: "POST",
+      body: JSON.stringify(body)
     });
   },
   audits(token: string) {
