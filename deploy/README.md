@@ -46,6 +46,8 @@ $env:DEVICE_INGEST_KEY="<云端 apps/server/.env 中的密钥>"
 powershell -ExecutionPolicy Bypass -File deploy/deploy.ps1
 ```
 
+这里的 `DEVICE_INGEST_KEY` 是基站/桥接程序调用云端 API 时使用的设备上报鉴权密钥，不是云服务器 SSH 密钥、登录密码或云厂商 AccessKey。生产环境由云服务器负责人在 `apps/server/.env` 中配置一串强随机值，基站侧或 PC 桥接侧使用同一串值，通过 `X-Device-Key` 请求头接入。
+
 也可以单独运行：
 
 ```powershell
