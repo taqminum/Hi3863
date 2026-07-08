@@ -29,6 +29,7 @@ import {
   type MobileOpenDesignToHostMessage
 } from "./mobileOpenDesign";
 import {
+  buildLocalPatrolTask,
   defaultMobileConnectionMode,
   mobileSessionAllowsLocalControl,
   selectMobileReadings,
@@ -397,11 +398,23 @@ export function MobileConsoleApp() {
         if (connectionMode === "gateway") {
           lastLocalControlAtRef.current = Date.now();
           await gatewayApi.sendControl({ cmd: "auto_start" });
+          setTasks((current) => buildLocalPatrolTask({
+            currentTasks: current,
+            deviceId: selectedDevice.id,
+            baseStationId: selectedDevice.base_station_id,
+            mode: "gateway"
+          }));
           setNotice("已向星闪基站发送自动巡检启动指令");
           return;
         }
         if (connectionMode === "car-direct") {
           await localCarApi.send({ cmd: "auto_start" });
+          setTasks((current) => buildLocalPatrolTask({
+            currentTasks: current,
+            deviceId: selectedDevice.id,
+            baseStationId: selectedDevice.base_station_id,
+            mode: "car-direct"
+          }));
           setNotice("已向小车直连发送自动巡检启动指令");
           return;
         }

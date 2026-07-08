@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildLocalPatrolTask,
   defaultMobileConnectionMode,
   mobileSessionAllowsLocalControl,
   selectMobileReadings,
@@ -42,4 +43,52 @@ test("cloud mode prefers fresh live readings over cached history", () => {
   assert.deepEqual(selectMobileReadings("cloud", cached, live), live);
   assert.deepEqual(selectMobileReadings("gateway", cached, live), cached);
   assert.deepEqual(selectMobileReadings("car-direct", [], live), live);
+});
+
+test("builds a real local patrol task record for gateway and car direct mode", () => {
+  const existing = [{
+    id: "task-old",
+    device_id: "ws63-car-001",
+    base_station_id: "sle-base-001",
+    name: "旧任务",
+    steps_json: "[]",
+    status: "completed" as const,
+    created_by: "local-field-operator",
+    created_at: "2026-07-08T10:00:00.000Z",
+    started_at: "2026-07-08T10:00:00.000Z",
+    finished_at: "2026-07-08T10:00:05.000Z"
+  }];
+
+  const next = buildLocalPatrolTask({
+    currentTasks: existing,
+    deviceId: "ws63-car-001",
+    baseStationId: "sle-base-001",
+    mode: "gateway",
+    now: "2026-07-08T12:00:00.000Z"
+  });
+
+  assert.equal(next[0].status, "running");
+  assert.equal(next[0].name, "基站预检线路");
+  assert.equal(next[0].started_at, "2026-07-08T12:00:00.000Z");
+  assert.match(next[0].steps_json, /right/);
+  assert.equal(next[1].id, "task-old");
+});
+
+test("local patrol display route matches the firmware precheck route", () => {
+  const [task] = buildLocalPatrolTask({
+    currentTasks: [],
+    deviceId: "ws63-car-001",
+    baseStationId: "sle-base-001",
+    mode: "gateway",
+    now: "2026-07-08T12:00:00.000Z"
+  });
+
+  assert.deepEqual(JSON.parse(task.steps_json), [
+    { action: "forward", speed: 45, durationMs: 2000 },
+    { action: "left", speed: 35, durationMs: 600 },
+    { action: "forward", speed: 45, durationMs: 2000 },
+    { action: "right", speed: 35, durationMs: 600 },
+    { action: "forward", speed: 45, durationMs: 2000 },
+    { action: "stop", speed: 0, durationMs: 500 }
+  ]);
 });

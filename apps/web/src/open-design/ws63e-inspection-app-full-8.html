@@ -479,48 +479,33 @@
         <div class="tasks-layout">
           <!-- Col 1: Create Task -->
           <div class="task-panel">
-            <div class="panel-header"><span>新建任务</span><i data-lucide="plus-circle" width="16" height="16" class="header-icon-btn" onclick="alert('将打开高级任务路线编排器...')"></i></div>
+            <div class="panel-header"><span>新建任务</span><i data-lucide="plus-circle" width="16" height="16" class="header-icon-btn"></i></div>
             <div class="panel-body">
               <div class="status-summary">
-                <div class="status-row"><span class="status-label"><i data-lucide="cpu" width="12" height="12"></i> 目标小车</span><span class="status-val">ROVER-01</span></div>
-                <div class="status-row"><span class="status-label"><i data-lucide="radio-tower" width="12" height="12"></i> 边缘基站</span><span class="status-val online">H3863 在线</span></div>
-                <div class="status-row"><span class="status-label"><i data-lucide="activity" width="12" height="12"></i> 链路信号</span><span class="status-val">-68 dBm</span></div>
+                <div class="status-row"><span class="status-label"><i data-lucide="cpu" width="12" height="12"></i> 目标小车</span><span class="status-val">等待手机端同步任务</span></div>
+                <div class="status-row"><span class="status-label"><i data-lucide="radio-tower" width="12" height="12"></i> 边缘基站</span><span class="status-val">等待同步</span></div>
+                <div class="status-row"><span class="status-label"><i data-lucide="activity" width="12" height="12"></i> 链路信号</span><span class="status-val">-- dBm</span></div>
               </div>
               <div class="form-group">
                 <label class="form-label">任务名称</label>
-                <input type="text" class="form-control" value="Auto-Inspect-094">
+                <input type="text" class="form-control" value="预检线路">
               </div>
               <div class="form-group">
                 <label class="form-label">预设路线模板</label>
                 <select class="form-control">
-                  <option>[B-2区] 湿度异常复核路线</option>
-                  <option>常规设备状态巡检</option>
-                  <option>外围安防绕场</option>
+                  <option>固件预检线路</option>
+                  <option>云端巡检任务</option>
                 </select>
               </div>
-              <button class="btn-primary" onclick="alert('指令已推送到云端任务队列')"><i data-lucide="send" width="16" height="16"></i> 一键下发任务</button>
+              <button class="btn-primary"><i data-lucide="send" width="16" height="16"></i> 一键下发任务</button>
             </div>
           </div>
 
           <!-- Col 2: Task Queue -->
           <div class="task-panel">
-            <div class="panel-header"><span>任务队列 (3)</span><i data-lucide="list" width="16" height="16" class="header-icon-btn" onclick="alert('正在与云端服务器同步最新任务队列状态...')"></i></div>
+            <div class="panel-header"><span>任务队列 (0)</span><i data-lucide="list" width="16" height="16" class="header-icon-btn"></i></div>
             <div class="panel-body queue-list">
-              <div class="task-card running">
-                <div class="tc-header"><span class="tc-title">Auto-Inspect-093</span><span class="badge running">Running</span></div>
-                <div class="tc-meta"><i data-lucide="map-pin"></i> [B-2区] 湿度复核</div>
-                <div class="tc-time">14:28:10</div>
-              </div>
-              <div class="task-card pending">
-                <div class="tc-header"><span class="tc-title">Auto-Inspect-094</span><span class="badge pending">Pending</span></div>
-                <div class="tc-meta"><i data-lucide="map-pin"></i> 常规设备巡检</div>
-                <div class="tc-time">等待调度</div>
-              </div>
-              <div class="task-card failed">
-                <div class="tc-header"><span class="tc-title">Night-Patrol-01</span><span class="badge failed">Failed</span></div>
-                <div class="tc-meta" style="color:var(--color-red)"><i data-lucide="alert-circle"></i> Error: 传感器离线</div>
-                <div class="tc-time">02:15:00</div>
-              </div>
+              <div class="empty-state">等待手机端同步任务</div>
             </div>
           </div>
 
@@ -529,32 +514,32 @@
             <div class="panel-header"><span>执行步骤追踪</span><div class="tl-header-badge"><div class="status-dot"></div> 实时同步</div></div>
             <div class="panel-body">
               <div class="timeline">
-                <div class="tl-item done">
+                <div class="tl-item">
                   <div class="tl-marker"></div>
                   <div class="tl-content">
-                    <div class="tl-title"><i data-lucide="power" width="14" height="14"></i> 启动系统与自检</div>
-                    <div class="tl-meta"><span>14:28:10</span> | <span>耗时 2s</span></div>
-                  </div>
-                </div>
-                <div class="tl-item done">
-                  <div class="tl-marker"></div>
-                  <div class="tl-content">
-                    <div class="tl-title"><i data-lucide="navigation" width="14" height="14"></i> 导航至 B-2 区入口</div>
-                    <div class="tl-meta"><span>1.2 m/s</span> | <span>耗时 45s</span></div>
-                  </div>
-                </div>
-                <div class="tl-item active">
-                  <div class="tl-marker"></div>
-                  <div class="tl-content">
-                    <div class="tl-title"><i data-lucide="camera" width="14" height="14"></i> 环视采图与湿度取样</div>
-                    <div class="tl-meta" style="border: 1px solid rgba(0,230,168,0.3); color: var(--color-cyan);"><span>执行中...</span> | <span>剩余 10s</span></div>
+                    <div class="tl-title">等待创建巡检任务</div>
+                    <div class="tl-meta"><span>等待手机端同步任务</span></div>
                   </div>
                 </div>
                 <div class="tl-item">
                   <div class="tl-marker"></div>
                   <div class="tl-content">
-                    <div class="tl-title"><i data-lucide="corner-down-left" width="14" height="14"></i> 返航至充电基站</div>
-                    <div class="tl-meta"><span>待执行</span></div>
+                    <div class="tl-title">等待基站拉取</div>
+                    <div class="tl-meta"><span>任务创建后显示真实状态</span></div>
+                  </div>
+                </div>
+                <div class="tl-item">
+                  <div class="tl-marker"></div>
+                  <div class="tl-content">
+                    <div class="tl-title">等待线路执行</div>
+                    <div class="tl-meta"><span>执行进度由任务回执更新</span></div>
+                  </div>
+                </div>
+                <div class="tl-item">
+                  <div class="tl-marker"></div>
+                  <div class="tl-content">
+                    <div class="tl-title">等待完成回执</div>
+                    <div class="tl-meta"><span>完成或失败后显示结果</span></div>
                   </div>
                 </div>
               </div>

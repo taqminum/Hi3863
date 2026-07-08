@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import type { DeviceRecord, User } from "./api.ts";
+import type { DeviceRecord, PatrolTask, User } from "./api.ts";
 import { buildMobileOpenDesignSnapshot, buildMobileOpenDesignSrcDoc } from "./mobile/mobileOpenDesign.ts";
 
 test("injects mobile landscape patch without removing Open Design chart functions", () => {
@@ -26,6 +27,39 @@ test("updates data tab metric values from live snapshot", () => {
   assert.match(result, /setDataMetric\("m-humid", snapshot\.humidityLabel\)/);
   assert.match(result, /setDataMetric\("m-light", snapshot\.lightnessLabel\)/);
 });
+
+test("source Open Design tasks tab uses safe placeholders instead of fixed mock tasks", () => {
+  const html = readFileSync(new URL("./open-design/ws63e-inspection-app-full-8.html", import.meta.url), "utf8");
+  const tasksSection = html.slice(html.indexOf('id="view-tasks"'), html.indexOf('id="view-data"'));
+
+  assert.match(tasksSection, /等待手机端同步任务/);
+  assert.doesNotMatch(tasksSection, /Auto-Inspect-093|Auto-Inspect-094|Night-Patrol-01|ROVER-01|任务队列 \(3\)/);
+  assert.doesNotMatch(tasksSection, /onclick="alert/);
+});
+
+test("bridge replaces mock patrol cards and timeline from live snapshot", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /function updateTaskQueue\(snapshot\)/);
+  assert.match(result, /queue\.innerHTML = snapshot\.taskCards\.map/);
+  assert.match(result, /function updateTaskTimeline\(snapshot\)/);
+  assert.match(result, /updateTaskQueue\(snapshot\)/);
+  assert.match(result, /updateTaskTimeline\(snapshot\)/);
+});
+
+test("mobile landscape patch gives tasks tab a phone-friendly two-column layout", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /body\[data-active-view="view-tasks"\] #view-tasks \.tasks-layout/);
+  assert.match(result, /grid-template-columns: minmax\(190px, 0\.72fr\) minmax\(0, 1fr\) !important/);
+  assert.match(result, /#view-tasks \.task-panel:nth-child\(1\)/);
+  assert.match(result, /#view-tasks \.task-panel:nth-child\(3\)/);
+});
+
+test("bridge suppresses Open Design inline patrol handlers before sending real patrol request", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /event\.stopImmediatePropagation\(\)/);
+  assert.match(result, /send\("create-patrol", \{ template: "standard" \}\)/);
+});
+
 
 test("rescales live charts so light values outside mock range remain visible", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
@@ -147,4 +181,113 @@ test("builds readable fallback snapshot when telemetry is empty", () => {
   assert.equal(snapshot.historyRange, "1H");
   assert.equal(snapshot.temperatureLabel, "--°C");
   assert.equal(snapshot.series.temperature.length, 24);
+});
+
+test("snapshot exposes real patrol task cards and route steps for the mobile tasks tab", () => {
+  const user: User = { id: "u1", username: "admin", displayName: "管理员", role: "admin" };
+  const selectedDevice: DeviceRecord = {
+    id: "ws63-car-001",
+    name: "WS63E-巡检车-01",
+    base_station_id: "sle-base-001",
+    status: "online",
+    connection_mode: "sle",
+    direct_url: "",
+    last_seen: new Date(0).toISOString()
+  };
+  const tasks: PatrolTask[] = [{
+    id: "task-1",
+    device_id: "ws63-car-001",
+    base_station_id: "sle-base-001",
+    name: "验收预检线路",
+    steps_json: JSON.stringify([
+      { action: "forward", speed: 70, durationMs: 1200 },
+      { action: "left", speed: 45, durationMs: 500 },
+      { action: "stop", speed: 0, durationMs: 0 }
+    ]),
+    status: "running",
+    created_by: "user-admin",
+    created_at: "2026-07-08T12:00:00.000Z",
+    started_at: "2026-07-08T12:00:03.000Z",
+    finished_at: null
+  }];
+
+  const snapshot = buildMobileOpenDesignSnapshot({
+    user,
+    connectionMode: "cloud",
+    historyRange: "1H",
+    selectedDevice,
+    devices: [selectedDevice],
+    baseStations: [],
+    readings: [],
+    commands: [],
+    tasks,
+    reports: [],
+    audits: [],
+    notice: ""
+  });
+
+  assert.deepEqual(snapshot.taskCards, [{
+    id: "task-1",
+    name: "验收预检线路",
+    status: "running",
+    statusLabel: "执行中",
+    detail: "前进 70% 1.2s -> 左转 45% 0.5s -> 停止",
+    timeLabel: "20:00:03",
+    baseStationId: "sle-base-001"
+  }]);
+  assert.equal(snapshot.taskStatus, "执行中");
+  assert.deepEqual(snapshot.taskTimeline.map((item) => [item.title, item.state]), [
+    ["任务已创建", "done"],
+    ["基站已拉取", "done"],
+    ["线路执行中", "active"],
+    ["完成回执", "idle"]
+  ]);
+});
+
+test("snapshot shows cancelled patrol tasks clearly on the mobile timeline", () => {
+  const user: User = { id: "u1", username: "admin", displayName: "管理员", role: "admin" };
+  const selectedDevice: DeviceRecord = {
+    id: "ws63-car-001",
+    name: "WS63E-巡检车-01",
+    base_station_id: "sle-base-001",
+    status: "online",
+    connection_mode: "sle",
+    direct_url: "",
+    last_seen: new Date(0).toISOString()
+  };
+  const task: PatrolTask = {
+    id: "task-cancelled",
+    device_id: "ws63-car-001",
+    base_station_id: "sle-base-001",
+    name: "取消演示",
+    steps_json: "[]",
+    status: "cancelled",
+    created_by: "user-admin",
+    created_at: "2026-07-08T12:00:00.000Z",
+    started_at: null,
+    finished_at: null
+  };
+
+  const snapshot = buildMobileOpenDesignSnapshot({
+    user,
+    connectionMode: "cloud",
+    historyRange: "1H",
+    selectedDevice,
+    devices: [selectedDevice],
+    baseStations: [],
+    readings: [],
+    commands: [],
+    tasks: [task],
+    reports: [],
+    audits: [],
+    notice: ""
+  });
+
+  assert.equal(snapshot.taskStatus, "已取消");
+  assert.deepEqual(snapshot.taskTimeline.map((item) => [item.title, item.state]), [
+    ["任务已创建", "done"],
+    ["任务已取消", "error"],
+    ["线路未继续执行", "idle"],
+    ["完成回执", "idle"]
+  ]);
 });

@@ -30,6 +30,8 @@ export interface MobileOpenDesignSnapshot {
   lightnessLabel: string;
   commandStatus: string;
   taskStatus: string;
+  taskCards: MobileTaskCard[];
+  taskTimeline: MobileTaskTimelineItem[];
   agentSummary: string;
   notice: string;
   connectionMode: ConnectionMode;
@@ -41,6 +43,22 @@ export interface MobileOpenDesignSnapshot {
     humidity: Array<number | null>;
     lightness: Array<number | null>;
   };
+}
+
+export interface MobileTaskCard {
+  id: string;
+  name: string;
+  status: PatrolTask["status"];
+  statusLabel: string;
+  detail: string;
+  timeLabel: string;
+  baseStationId: string;
+}
+
+export interface MobileTaskTimelineItem {
+  title: string;
+  meta: string;
+  state: "done" | "active" | "error" | "idle";
 }
 
 export type MobileOpenDesignToHostMessage =
@@ -137,6 +155,42 @@ body {
 }
 .view-section.active:not(#view-overview):not(#view-control) {
   min-height: 100% !important;
+}
+body[data-active-view="view-tasks"] .content-area {
+  overflow: hidden !important;
+}
+body[data-active-view="view-tasks"] #view-tasks {
+  height: 100% !important;
+  overflow: hidden !important;
+}
+body[data-active-view="view-tasks"] #view-tasks .tasks-layout {
+  display: grid !important;
+  grid-template-columns: minmax(190px, 0.72fr) minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 10px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+body[data-active-view="view-tasks"] #view-tasks .task-panel {
+  min-height: 0 !important;
+}
+body[data-active-view="view-tasks"] #view-tasks .task-panel:nth-child(1) {
+  grid-column: 1 !important;
+  grid-row: 1 / 3 !important;
+}
+body[data-active-view="view-tasks"] #view-tasks .task-panel:nth-child(2) {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+}
+body[data-active-view="view-tasks"] #view-tasks .task-panel:nth-child(3) {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+}
+body[data-active-view="view-tasks"] #view-tasks .panel-body,
+body[data-active-view="view-tasks"] #view-tasks .queue-list,
+body[data-active-view="view-tasks"] #view-tasks .timeline {
+  min-height: 0 !important;
+  overflow: auto !important;
 }
 body[data-active-view="view-control"] .content-area {
   overflow: hidden !important;
@@ -506,6 +560,52 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     return currentSpeed;
   }
 
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function updateTaskQueue(snapshot) {
+    const cards = Array.isArray(snapshot.taskCards) ? snapshot.taskCards : [];
+    const queue = document.querySelector("#view-tasks .queue-list");
+    const header = document.querySelector("#view-tasks .task-panel:nth-child(2) .panel-header span");
+    if (header) header.textContent = "任务队列 (" + cards.length + ")";
+    if (!queue) return;
+    if (cards.length === 0) {
+      queue.innerHTML = '<div class="empty-state">暂无巡检任务</div>';
+      return;
+    }
+    queue.innerHTML = snapshot.taskCards.map((task) => (
+      '<div class="task-card ' + escapeHtml(task.status) + '">' +
+        '<div class="tc-header"><span class="tc-title">' + escapeHtml(task.name) + '</span><span class="badge ' + escapeHtml(task.status) + '">' + escapeHtml(task.statusLabel) + '</span></div>' +
+        '<div class="tc-meta"><i data-lucide="map-pin"></i> ' + escapeHtml(task.detail) + '</div>' +
+        '<div class="tc-time">' + escapeHtml(task.timeLabel) + ' · ' + escapeHtml(task.baseStationId) + '</div>' +
+      '</div>'
+    )).join("");
+    window.lucide?.createIcons?.();
+  }
+
+  function updateTaskTimeline(snapshot) {
+    const items = Array.isArray(snapshot.taskTimeline) ? snapshot.taskTimeline : [];
+    const timeline = document.querySelector("#view-tasks .timeline");
+    const badge = document.querySelector("#view-tasks .tl-header-badge");
+    if (badge) badge.textContent = snapshot.taskStatus === "--" ? "等待任务" : snapshot.taskStatus;
+    if (!timeline || items.length === 0) return;
+    timeline.innerHTML = items.map((item) => {
+      const className = item.state === "idle" ? "tl-item" : "tl-item " + item.state;
+      return '<div class="' + className + '">' +
+        '<div class="tl-marker"></div>' +
+        '<div class="tl-content">' +
+          '<div class="tl-title">' + escapeHtml(item.title) + '</div>' +
+          '<div class="tl-meta">' + escapeHtml(item.meta) + '</div>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+  }
+
   function readSpeedPercent() {
     const speed = readSpeed();
     if (speed <= 2.5) return Math.max(0, Math.min(100, Math.round((speed / 2.0) * 100)));
@@ -582,6 +682,7 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     document.querySelector(".btn-primary")?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       send("create-patrol", { template: "standard" });
     }, true);
     document.querySelector(".agent-card")?.addEventListener("click", () => send("refresh-agent"));
@@ -617,6 +718,8 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     updateChart("dt-chart-temp", snapshot.series.temperature);
     updateChart("dt-chart-humid", snapshot.series.humidity);
     updateChart("dt-chart-light", snapshot.series.lightness);
+    updateTaskQueue(snapshot);
+    updateTaskTimeline(snapshot);
     window.__ws63MobileSnapshot = snapshot;
   }
 
@@ -683,6 +786,107 @@ function normalizeAgentReport(report?: AgentReport): { summary: string } {
   return {
     summary: report?.summary ?? "等待 Agent 分析结果"
   };
+}
+
+function taskStatusLabel(value?: string): string {
+  return {
+    pending: "待拉取",
+    pulled: "已拉取",
+    running: "执行中",
+    completed: "已完成",
+    failed: "失败",
+    cancelled: "已取消"
+  }[value ?? ""] ?? (value || "--");
+}
+
+function taskTimeLabel(task: PatrolTask): string {
+  const value = task.finished_at ?? task.started_at ?? task.created_at;
+  return new Date(value).toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function patrolActionLabel(action: string): string {
+  return {
+    forward: "前进",
+    backward: "后退",
+    left: "左转",
+    right: "右转",
+    stop: "停止",
+    auto_start: "启动预检",
+    auto_stop: "停止预检",
+    drive: "差速行驶"
+  }[action] ?? action;
+}
+
+function parseTaskSteps(task: PatrolTask): Array<{ action?: string; speed?: number; durationMs?: number; duration_ms?: number }> {
+  try {
+    const parsed = JSON.parse(task.steps_json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatTaskStep(step: { action?: string; speed?: number; durationMs?: number; duration_ms?: number }): string {
+  const action = String(step.action ?? "forward");
+  if (action === "stop") return "停止";
+  const speed = Number.isFinite(step.speed) ? ` ${step.speed}%` : "";
+  const duration = Number(step.durationMs ?? step.duration_ms ?? 0);
+  const durationLabel = duration > 0 ? ` ${(duration / 1000).toFixed(duration % 1000 === 0 ? 0 : 1)}s` : "";
+  return `${patrolActionLabel(action)}${speed}${durationLabel}`;
+}
+
+function taskDetail(task: PatrolTask): string {
+  const steps = parseTaskSteps(task);
+  if (steps.length === 0) return "等待基站执行路线";
+  return steps.slice(0, 4).map(formatTaskStep).join(" -> ");
+}
+
+function buildTaskCards(tasks: PatrolTask[]): MobileTaskCard[] {
+  return tasks.slice(0, 5).map((task) => ({
+    id: task.id,
+    name: task.name,
+    status: task.status,
+    statusLabel: taskStatusLabel(task.status),
+    detail: taskDetail(task),
+    timeLabel: taskTimeLabel(task),
+    baseStationId: task.base_station_id
+  }));
+}
+
+function buildTaskTimeline(task?: PatrolTask): MobileTaskTimelineItem[] {
+  if (!task) {
+    return [
+      { title: "等待创建巡检任务", meta: "云端、基站或小车直连均可发起", state: "idle" },
+      { title: "等待基站拉取", meta: "任务创建后显示真实状态", state: "idle" },
+      { title: "等待线路执行", meta: "执行进度由基站回执更新", state: "idle" },
+      { title: "等待完成回执", meta: "完成或失败后在此处显示结果", state: "idle" }
+    ];
+  }
+  if (task.status === "cancelled") {
+    return [
+      { title: "任务已创建", meta: taskTimeLabel(task), state: "done" },
+      { title: "任务已取消", meta: "任务已停止调度", state: "error" },
+      { title: "线路未继续执行", meta: "未收到执行回执", state: "idle" },
+      { title: "完成回执", meta: "任务取消，无完成回执", state: "idle" }
+    ];
+  }
+  const pulled = ["pulled", "running", "completed", "failed"].includes(task.status);
+  const running = ["running", "completed", "failed"].includes(task.status);
+  const finished = ["completed", "failed"].includes(task.status);
+  return [
+    { title: "任务已创建", meta: taskTimeLabel(task), state: "done" },
+    { title: "基站已拉取", meta: task.status === "pending" ? "等待巡检桥接或基站拉取" : "任务已进入基站侧队列", state: pulled ? "done" : "idle" },
+    {
+      title: "线路执行中",
+      meta: taskDetail(task),
+      state: task.status === "failed" ? "error" : running && !finished ? "active" : running ? "done" : "idle"
+    },
+    {
+      title: "完成回执",
+      meta: task.status === "failed" ? "执行失败，请检查基站和小车链路" : task.finished_at ? taskTimeLabel(task) : "等待完成",
+      state: task.status === "failed" ? "error" : task.status === "completed" ? "done" : "idle"
+    }
+  ];
 }
 
 function rangeDurationMs(range: MobileHistoryRange): number {
@@ -752,7 +956,9 @@ export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInp
     humidityLabel: `${formatNumber(latest?.humidity, 0)}%RH`,
     lightnessLabel: `${formatNumber(latest?.lightness, 0)} lx`,
     commandStatus: command ? `${command.payload} / ${command.status}` : "--",
-    taskStatus: task ? `${task.name} / ${task.status}` : "--",
+    taskStatus: task ? taskStatusLabel(task.status) : "--",
+    taskCards: buildTaskCards(input.tasks),
+    taskTimeline: buildTaskTimeline(task),
     agentSummary: report.summary,
     notice: input.notice,
     connectionMode: input.connectionMode,
