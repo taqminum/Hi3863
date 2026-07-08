@@ -83,6 +83,24 @@ test("repeats joystick drive commands while the pointer is held", () => {
   assert.match(result, /stopDrive\(\)/);
 });
 
+test("joystick drive output is capped by the selected speed limit", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /function quantizedSpeedLimit\(\)/);
+  assert.match(result, /const speedPercent = readSpeedPercent\(\)/);
+  assert.match(result, /if \(speedPercent < 50\) return 35/);
+  assert.match(result, /if \(speedPercent < 80\) return 70/);
+  assert.match(result, /const speedLimit = quantizedSpeedLimit\(\)/);
+  assert.match(result, /Math\.round\(\(y \+ turn\) \* speedLimit\)/);
+  assert.match(result, /Math\.round\(\(y - turn\) \* speedLimit\)/);
+  assert.doesNotMatch(result, /\(y \+ turn\) \* 70/);
+});
+
+test("joystick speed reader converts Open Design m/s display to percent", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /function readSpeedPercent\(\)/);
+  assert.match(result, /if \(speed <= 2\.5\) return Math\.max\(0, Math\.min\(100, Math\.round\(\(speed \/ 2\.0\) \* 100\)\)\)/);
+});
+
 test("stretches overview content to avoid empty lower screen on landscape phones", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
   assert.match(result, /#view-overview\.active/);

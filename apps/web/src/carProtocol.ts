@@ -63,13 +63,12 @@ export const CAR_LOCAL_BASE_URL = "http://192.168.6.1:8080";
 export const CAR_LOCAL_UDP_HOST = "255.255.255.255";
 export const CAR_LOCAL_UDP_PORT = 8888;
 export const CAR_LOCAL_UDP_CONTROL_SPEED = 35;
-export const CAR_LOCAL_UDP_CONTROL_DURATION_MS = 2200;
+export const CAR_LOCAL_UDP_CONTROL_DURATION_MS = 500;
 export const JOYSTICK_DEAD_ZONE = 0.18;
-export const JOYSTICK_MAX_PERCENT = 70;
+export const JOYSTICK_MAX_PERCENT = 100;
 export const JOYSTICK_REPEAT_MS = 300;
 export const JOYSTICK_COMMAND_DURATION_MS = 350;
-export const CURRENT_TURN_PERCENT = 50;
-export const MIN_EFFECTIVE_PERCENT = 20;
+export const MIN_EFFECTIVE_PERCENT = 35;
 
 const motionNames: MotionName[] = ["stop", "forward", "backward", "left", "right"];
 
@@ -122,9 +121,7 @@ export function commandSpeedFromJoystick(vector: JoystickVector, maxPercent = JO
 export function buildCompatControlPayload(command: CarCommand, speed: number, durationMs: number): CompatControlPayload {
   if (command === "auto_start" || command === "auto_stop") return { cmd: command };
   if (command === "stop") return { cmd: "stop", speed: 0, duration_ms: 0 };
-  const normalizedSpeed = command === "left" || command === "right"
-    ? CURRENT_TURN_PERCENT
-    : Math.round(clamp(speed, MIN_EFFECTIVE_PERCENT, 100));
+  const normalizedSpeed = Math.round(clamp(speed, MIN_EFFECTIVE_PERCENT, 100));
   return {
     cmd: command,
     speed: normalizedSpeed,

@@ -506,6 +506,19 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     return currentSpeed;
   }
 
+  function readSpeedPercent() {
+    const speed = readSpeed();
+    if (speed <= 2.5) return Math.max(0, Math.min(100, Math.round((speed / 2.0) * 100)));
+    return Math.max(0, Math.min(100, Math.round(speed)));
+  }
+
+  function quantizedSpeedLimit() {
+    const speedPercent = readSpeedPercent();
+    if (speedPercent < 50) return 35;
+    if (speedPercent < 80) return 70;
+    return 100;
+  }
+
   function emitDriveFromPointer(event, force) {
     const base = document.getElementById("joystick-base");
     if (!base) return;
@@ -518,13 +531,14 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const x = Math.max(-1, Math.min(1, dx / radius));
     const y = Math.max(-1, Math.min(1, -dy / radius));
     const turn = y > 0 ? -x : x;
-    const left = Math.max(-100, Math.min(100, Math.round((y + turn) * 70)));
-    const right = Math.max(-100, Math.min(100, Math.round((y - turn) * 70)));
+    const speedLimit = quantizedSpeedLimit();
+    const left = Math.max(-100, Math.min(100, Math.round((y + turn) * speedLimit)));
+    const right = Math.max(-100, Math.min(100, Math.round((y - turn) * speedLimit)));
     if (Math.hypot(x, y) < 0.16) {
       stopDrive();
       return;
     }
-    startDrive({ left, right, speed: readSpeed(), durationMs: 350 }, force);
+    startDrive({ left, right, speed: speedLimit, durationMs: 350 }, force);
   }
 
   function repeatDrive(force) {

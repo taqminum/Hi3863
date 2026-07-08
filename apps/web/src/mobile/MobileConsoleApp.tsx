@@ -31,6 +31,7 @@ import {
 import {
   defaultMobileConnectionMode,
   mobileSessionAllowsLocalControl,
+  selectMobileReadings,
   shouldAutoFallbackGatewayToCarDirect,
   shouldPollLocalTelemetry
 } from "./mobileSession";
@@ -134,7 +135,7 @@ export function MobileConsoleApp() {
     : connectionMode === "car-direct"
       ? localSamples.map(localTelemetryToReading)
       : readings;
-  const activeReadings = cachedReadings.length > 0 ? cachedReadings : liveReadings;
+  const activeReadings = selectMobileReadings(connectionMode, cachedReadings, liveReadings);
 
   const logout = useCallback(() => {
     localStorage.removeItem("ws63-token");
@@ -233,6 +234,12 @@ export function MobileConsoleApp() {
   useEffect(() => {
     void guarded(() => refresh());
   }, [guarded, refresh]);
+
+  useEffect(() => {
+    if (connectionMode !== "cloud" || !token || token.startsWith("local-demo:")) return;
+    const timer = window.setInterval(() => void guarded(() => refresh()), 3000);
+    return () => window.clearInterval(timer);
+  }, [connectionMode, guarded, refresh, token]);
 
   useEffect(() => {
     if (connectionMode === "cloud") return;

@@ -4,6 +4,7 @@ import {
   CAR_LOCAL_BASE_URL,
   CAR_LOCAL_UDP_HOST,
   CAR_LOCAL_UDP_PORT,
+  JOYSTICK_MAX_PERCENT,
   buildCompatControlPayload,
   buildUdpGatewayCommand,
   buildUdpGatewayControlMessage,
@@ -37,11 +38,11 @@ test("maps drive payloads to legacy command when compatibility is needed", () =>
 test("builds differential JSON commands for smooth BearPi UDP control", () => {
   assert.equal(
     buildUdpGatewayControlMessage({ cmd: "drive", left: 50, right: 50, duration_ms: 350 }),
-    JSON.stringify({ cmd: "drive", left: 50, right: 50, duration_ms: 2200 })
+    JSON.stringify({ cmd: "drive", left: 50, right: 50, duration_ms: 500 })
   );
   assert.equal(
     buildUdpGatewayControlMessage({ cmd: "drive", left: 40, right: -40, duration_ms: 350 }),
-    JSON.stringify({ cmd: "drive", left: 40, right: -40, duration_ms: 2200 })
+    JSON.stringify({ cmd: "drive", left: 40, right: -40, duration_ms: 500 })
   );
   assert.equal(
     buildUdpGatewayControlMessage({ cmd: "stop", speed: 0, duration_ms: 0 }),
@@ -68,8 +69,8 @@ test("joystick maps to current firmware compatible command", () => {
 });
 
 test("builds current firmware compatible payload", () => {
-  assert.deepEqual(buildCompatControlPayload("forward", 12, 900), { cmd: "forward", speed: 20, duration_ms: 900 });
-  assert.deepEqual(buildCompatControlPayload("left", 80, 900), { cmd: "left", speed: 50, duration_ms: 900 });
+  assert.deepEqual(buildCompatControlPayload("forward", 12, 900), { cmd: "forward", speed: 35, duration_ms: 900 });
+  assert.deepEqual(buildCompatControlPayload("left", 80, 900), { cmd: "left", speed: 80, duration_ms: 900 });
   assert.deepEqual(buildCompatControlPayload("stop", 99, 900), { cmd: "stop", speed: 0, duration_ms: 0 });
   assert.deepEqual(buildCompatControlPayload("auto_start", 99, 900), { cmd: "auto_start" });
 });
@@ -81,9 +82,14 @@ test("downgrades wheel output to current firmware compatible payload", () => {
   assert.equal(wheelOutputToLegacyCommand({ left: -20, right: 70 }), "left");
   assert.deepEqual(buildCompatPayloadFromWheels({ left: 70, right: -20 }, 350), {
     cmd: "right",
-    speed: 50,
+    speed: 70,
     duration_ms: 350
   });
+});
+
+test("uses a wider default joystick speed range for visible car speed changes", () => {
+  assert.equal(JOYSTICK_MAX_PERCENT, 100);
+  assert.deepEqual(joystickToDifferential({ x: 0, y: 1 }), { left: 100, right: 100 });
 });
 
 test("builds differential drive payload", () => {

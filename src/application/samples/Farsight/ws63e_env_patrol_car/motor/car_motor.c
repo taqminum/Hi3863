@@ -3,11 +3,15 @@
 #include "../board/car_board.h"
 #include "../drivers/i2c_bus.h"
 
+#ifdef CAR_MOTOR_HOST_TEST
+#include <stdint.h>
+void osDelay(uint32_t ticks);
+#else
 #include "cmsis_os2.h"
+#endif
 #include "stdio.h"
 
 #define CAR_MOTOR_PERIOD_TICKS 1000U
-#define CAR_MOTOR_TURN_TICKS 500U
 #define CAR_MOTOR_MIN_EFFECTIVE_PERCENT 20U
 #define CAR_MOTOR_FREQ_SETTLE_TICKS 10U
 #define CAR_MOTOR_MANUAL_CMD_TIMEOUT_MS 800U
@@ -47,10 +51,16 @@ static uint16_t motor_speed_to_ticks(uint8_t speed_percent)
     if (speed_percent > 100U) {
         speed_percent = 100U;
     }
-    if (speed_percent > 0U && speed_percent < CAR_MOTOR_MIN_EFFECTIVE_PERCENT) {
-        speed_percent = CAR_MOTOR_MIN_EFFECTIVE_PERCENT;
+    if (speed_percent == 0U) {
+        return 0;
     }
-    return (uint16_t)((CAR_MOTOR_PERIOD_TICKS * speed_percent) / 100U);
+    if (speed_percent <= 45U) {
+        return 280U;
+    }
+    if (speed_percent <= 75U) {
+        return 650U;
+    }
+    return CAR_MOTOR_PERIOD_TICKS;
 }
 
 static int8_t motor_clamp_wheel_percent(int16_t percent)
@@ -232,12 +242,10 @@ int car_motor_command(const car_motor_cmd_t *cmd)
             ret = motor_apply(duty, g_direction_map.left_reverse, duty, g_direction_map.right_forward);
             break;
         case CAR_MOTION_LEFT:
-            ret = motor_apply(CAR_MOTOR_TURN_TICKS, g_direction_map.left_forward, CAR_MOTOR_TURN_TICKS,
-                g_direction_map.right_forward);
+            ret = motor_apply(duty, g_direction_map.left_forward, duty, g_direction_map.right_forward);
             break;
         case CAR_MOTION_RIGHT:
-            ret = motor_apply(CAR_MOTOR_TURN_TICKS, g_direction_map.left_reverse, CAR_MOTOR_TURN_TICKS,
-                g_direction_map.right_reverse);
+            ret = motor_apply(duty, g_direction_map.left_reverse, duty, g_direction_map.right_reverse);
             break;
         case CAR_MOTION_STOP:
         default:

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   defaultMobileConnectionMode,
   mobileSessionAllowsLocalControl,
+  selectMobileReadings,
   shouldAutoFallbackGatewayToCarDirect,
   shouldPollLocalTelemetry
 } from "./mobile/mobileSession.ts";
@@ -32,4 +33,13 @@ test("gateway mode stays selected after transient telemetry failures", () => {
   assert.equal(shouldAutoFallbackGatewayToCarDirect(1), false);
   assert.equal(shouldAutoFallbackGatewayToCarDirect(3), false);
   assert.equal(shouldAutoFallbackGatewayToCarDirect(10), false);
+});
+
+test("cloud mode prefers fresh live readings over cached history", () => {
+  const cached = [{ id: "old", recordedAt: "2026-07-08T10:00:00.000Z" }];
+  const live = [{ id: "new", recordedAt: "2026-07-08T10:01:00.000Z" }];
+
+  assert.deepEqual(selectMobileReadings("cloud", cached, live), live);
+  assert.deepEqual(selectMobileReadings("gateway", cached, live), cached);
+  assert.deepEqual(selectMobileReadings("car-direct", [], live), live);
 });

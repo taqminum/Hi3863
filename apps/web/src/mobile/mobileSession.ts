@@ -17,3 +17,12 @@ export function shouldPollLocalTelemetry(nowMs: number, lastControlAtMs: number,
 export function shouldAutoFallbackGatewayToCarDirect(_failureCount: number): boolean {
   return false;
 }
+
+export function selectMobileReadings<T>(
+  connectionMode: ConnectionMode,
+  cachedReadings: T[],
+  liveReadings: T[]
+): T[] {
+  if (connectionMode === "cloud" && liveReadings.length > 0) return liveReadings;
+  return cachedReadings.length > 0 ? cachedReadings : liveReadings;
+}
