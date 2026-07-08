@@ -6,6 +6,12 @@ export interface RuntimeConfig {
   ingestKey: string;
   jwtSecret: string;
   simulator: boolean;
+  agent: {
+    enabled: boolean;
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  };
   cloud: {
     host: string;
     domain: string;
@@ -25,6 +31,12 @@ export function getConfig(): RuntimeConfig {
     ingestKey: process.env.DEVICE_INGEST_KEY ?? "dev-base-station-key",
     jwtSecret: process.env.JWT_SECRET ?? "dev-ws63-change-before-cloud-deploy",
     simulator: process.env.SIMULATOR === "1",
+    agent: {
+      enabled: process.env.OPENAI_AGENT_ENABLED === "1",
+      baseUrl: process.env.OPENAI_BASE_URL ?? "https://aigw.saurlax.com/v1",
+      apiKey: process.env.OPENAI_API_KEY ?? "",
+      model: process.env.OPENAI_MODEL ?? "gpt-4o-mini"
+    },
     cloud: {
       host: process.env.CLOUD_HOST ?? "101.132.21.134",
       domain: process.env.CLOUD_DOMAIN ?? "rxcccccc.icu"
