@@ -29,7 +29,7 @@ import {
   updateDeviceStatus,
   updatePatrolTaskStatus
 } from "./db.ts";
-import { canPerform, parsePatrolSteps, validateControlInput, type BaseStationTelemetry, type Permission } from "./domain.ts";
+import { canPerform, normalizeIncomingTelemetry, parsePatrolSteps, validateControlInput, type Permission } from "./domain.ts";
 import { readJson, requestId, sendJson, sendText } from "./http-utils.ts";
 import { addSseClient, broadcast } from "./realtime.ts";
 import type { User } from "./types.ts";
@@ -235,9 +235,10 @@ const routes: Handler = async (request, response, url, user) => {
       return;
     }
     const baseStationId = parts[3];
-    const payload = await readJson<BaseStationTelemetry>(request);
-    const result = ingestTelemetryBatch({ ...payload, baseStationId });
-    const report = createCurrentAgentReport(result.readings[0]?.deviceId ?? payload.devices[0]?.deviceId);
+    const payload = await readJson<unknown>(request);
+    const telemetry = normalizeIncomingTelemetry(payload, baseStationId);
+    const result = ingestTelemetryBatch(telemetry);
+    const report = createCurrentAgentReport(result.readings[0]?.deviceId ?? telemetry.devices[0]?.deviceId);
     broadcast("telemetry", { readings: result.readings, report });
     addAudit(null, "telemetry.ingest", "base_station", baseStationId, auditDetails(payload, {
       baseStationId,
@@ -315,7 +316,7 @@ const routes: Handler = async (request, response, url, user) => {
     const body = await readJson<{
       deviceId?: string;
       baseStationId?: string;
-      action?: "forward" | "backward" | "stop" | "drive";
+      action?: "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_stop";
       speed?: number;
       left?: number;
       right?: number;

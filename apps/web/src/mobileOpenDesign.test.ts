@@ -11,6 +11,23 @@ test("injects mobile landscape patch without removing Open Design chart function
   assert.match(result, /window\.closeChartModal/);
 });
 
+test("injects real interaction bridge for joystick repeat, task creation and charts", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /setInterval\(\(\) => repeatDrive\(false\), DRIVE_REPEAT_MS\)/);
+  assert.match(result, /send\("create-patrol", \{ template: "standard" \}\)/);
+  assert.match(result, /updateChart\("ov-chart-temp", snapshot\.series\.temperature\)/);
+  assert.match(result, /window\.Chart\.getChart/);
+});
+
+test("injects touch isolation before Open Design scripts and routes joystick touches by role", () => {
+  const html = "<html><head><script src=\"https://unpkg.com/lucide@latest\"></script></head><body></body></html>";
+  const result = buildMobileOpenDesignSrcDoc(html);
+  assert.ok(result.indexOf("ws63-mobile-touch-isolation") < result.indexOf("https://unpkg.com/lucide@latest"));
+  assert.match(result, /activeTouchIds = \{ joystick: null, speed: null \}/);
+  assert.match(result, /roleForWindowTouchListener/);
+  assert.match(result, /window\.__ws63TouchIsolation\?\.pick\(event, "joystick"\)/);
+});
+
 test("locks control view scrolling through active view CSS", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
   assert.match(result, /body\[data-active-view="view-control"\] \.content-area/);
@@ -20,8 +37,8 @@ test("locks control view scrolling through active view CSS", () => {
 test("repeats joystick drive commands while the pointer is held", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
   assert.match(result, /DRIVE_REPEAT_MS = 1000/);
-  assert.match(result, /window\.setInterval\(\(\) => emitHeldDrive\(\), DRIVE_REPEAT_MS\)/);
-  assert.match(result, /clearHeldDrive\(\)/);
+  assert.match(result, /window\.setInterval\(\(\) => repeatDrive\(false\), DRIVE_REPEAT_MS\)/);
+  assert.match(result, /stopDrive\(\)/);
 });
 
 test("stretches overview content to avoid empty lower screen on landscape phones", () => {
@@ -30,6 +47,14 @@ test("stretches overview content to avoid empty lower screen on landscape phones
   assert.match(result, /grid-template-rows: minmax\(108px, 0\.72fr\) minmax\(260px, 1\.35fr\) !important/);
   assert.match(result, /#view-overview \.data-grid/);
   assert.match(result, /height: auto !important/);
+});
+
+test("reserves permanent right system area and moves speed value upward", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /--ws63-system-right-reserve: clamp\(72px, env\(safe-area-inset-right, 96px\), 128px\)/);
+  assert.match(result, /width: calc\(100vw - var\(--ws63-system-right-reserve\)\) !important/);
+  assert.match(result, /body\[data-active-view="view-control"\] \.speed-value-display/);
+  assert.match(result, /transform: translateY\(-12px\)/);
 });
 
 test("builds readable fallback snapshot when telemetry is empty", () => {

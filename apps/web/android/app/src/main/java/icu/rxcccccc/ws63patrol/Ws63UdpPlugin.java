@@ -28,6 +28,7 @@ public class Ws63UdpPlugin extends Plugin {
 
         getBridge().execute(() -> {
             try (DatagramSocket socket = new DatagramSocket()) {
+                socket.setBroadcast(true);
                 socket.setSoTimeout(timeoutMs);
                 byte[] payload = message.getBytes(StandardCharsets.UTF_8);
                 DatagramPacket packet = new DatagramPacket(payload, payload.length, InetAddress.getByName(host), port);

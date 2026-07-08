@@ -7,11 +7,13 @@ import {
   buildCompatControlPayload,
   buildUdpGatewayCommand,
   buildUdpGatewayControlMessage,
+  buildCompatPayloadFromWheels,
   buildCloudControlBody,
   buildDrivePayload,
   joystickToDifferential,
   joystickToLegacyCommand,
-  normalizeCarTelemetry
+  normalizeCarTelemetry,
+  wheelOutputToLegacyCommand
 } from "./carProtocol.ts";
 
 test("uses BearPi gateway LAN as the default local car API", () => {
@@ -19,7 +21,7 @@ test("uses BearPi gateway LAN as the default local car API", () => {
 });
 
 test("uses BearPi UDP gateway as the default local transport", () => {
-  assert.equal(CAR_LOCAL_UDP_HOST, "192.168.6.1");
+  assert.equal(CAR_LOCAL_UDP_HOST, "255.255.255.255");
   assert.equal(CAR_LOCAL_UDP_PORT, 8888);
 });
 
@@ -35,11 +37,11 @@ test("maps local drive payloads to current BearPi UDP commands", () => {
 test("builds longer-lived JSON commands for smooth BearPi UDP control", () => {
   assert.equal(
     buildUdpGatewayControlMessage({ cmd: "drive", left: 50, right: 50, duration_ms: 350 }),
-    JSON.stringify({ cmd: "forward", speed: 35, duration_ms: 2200 })
+    JSON.stringify({ cmd: "forward", speed: 50, duration_ms: 2200 })
   );
   assert.equal(
     buildUdpGatewayControlMessage({ cmd: "drive", left: 40, right: -40, duration_ms: 350 }),
-    JSON.stringify({ cmd: "right", speed: 35, duration_ms: 2200 })
+    JSON.stringify({ cmd: "right", speed: 40, duration_ms: 2200 })
   );
   assert.equal(
     buildUdpGatewayControlMessage({ cmd: "stop", speed: 0, duration_ms: 0 }),
@@ -68,6 +70,18 @@ test("builds current firmware compatible payload", () => {
   assert.deepEqual(buildCompatControlPayload("left", 80, 900), { cmd: "left", speed: 50, duration_ms: 900 });
   assert.deepEqual(buildCompatControlPayload("stop", 99, 900), { cmd: "stop", speed: 0, duration_ms: 0 });
   assert.deepEqual(buildCompatControlPayload("auto_start", 99, 900), { cmd: "auto_start" });
+});
+
+test("downgrades wheel output to current firmware compatible payload", () => {
+  assert.equal(wheelOutputToLegacyCommand({ left: 70, right: 70 }), "forward");
+  assert.equal(wheelOutputToLegacyCommand({ left: -70, right: -70 }), "backward");
+  assert.equal(wheelOutputToLegacyCommand({ left: 70, right: -20 }), "right");
+  assert.equal(wheelOutputToLegacyCommand({ left: -20, right: 70 }), "left");
+  assert.deepEqual(buildCompatPayloadFromWheels({ left: 70, right: -20 }, 350), {
+    cmd: "right",
+    speed: 50,
+    duration_ms: 350
+  });
 });
 
 test("builds future drive payload", () => {

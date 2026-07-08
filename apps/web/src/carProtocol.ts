@@ -60,7 +60,7 @@ export interface LocalTelemetrySample {
 }
 
 export const CAR_LOCAL_BASE_URL = "http://192.168.6.1:8080";
-export const CAR_LOCAL_UDP_HOST = "192.168.6.1";
+export const CAR_LOCAL_UDP_HOST = "255.255.255.255";
 export const CAR_LOCAL_UDP_PORT = 8888;
 export const CAR_LOCAL_UDP_CONTROL_SPEED = 35;
 export const CAR_LOCAL_UDP_CONTROL_DURATION_MS = 2200;
@@ -140,15 +140,29 @@ export function buildDrivePayload(output: WheelOutput, durationMs: number): Driv
   };
 }
 
-export function buildUdpGatewayCommand(payload: CompatControlPayload | DrivePayload): CarCommand {
-  if (payload.cmd !== "drive") return payload.cmd;
-  const left = clamp(payload.left, -100, 100);
-  const right = clamp(payload.right, -100, 100);
-  if (Math.abs(left) < MIN_EFFECTIVE_PERCENT && Math.abs(right) < MIN_EFFECTIVE_PERCENT) return "stop";
+export function wheelOutputToLegacyCommand(output: WheelOutput): CarCommand {
+  const left = Math.round(clamp(output.left, -100, 100));
+  const right = Math.round(clamp(output.right, -100, 100));
+  if (left === 0 && right === 0) return "stop";
   const average = (left + right) / 2;
-  const turn = left - right;
-  if (Math.abs(average) >= Math.abs(turn) / 2) return average > 0 ? "forward" : "backward";
-  return turn > 0 ? "right" : "left";
+  const difference = left - right;
+  if (Math.abs(average) >= Math.abs(difference) * 0.75) {
+    return average >= 0 ? "forward" : "backward";
+  }
+  return difference > 0 ? "right" : "left";
+}
+
+export function wheelOutputSpeed(output: WheelOutput): number {
+  const speed = Math.max(Math.abs(output.left), Math.abs(output.right));
+  return speed === 0 ? 0 : clamp(speed, MIN_EFFECTIVE_PERCENT, 100);
+}
+
+export function buildCompatPayloadFromWheels(output: WheelOutput, durationMs: number): CompatControlPayload {
+  return buildCompatControlPayload(wheelOutputToLegacyCommand(output), wheelOutputSpeed(output), durationMs);
+}
+
+export function buildUdpGatewayCommand(payload: CompatControlPayload | DrivePayload): CarCommand {
+  return payload.cmd === "drive" ? wheelOutputToLegacyCommand(payload) : payload.cmd;
 }
 
 export function buildUdpGatewayControlMessage(payload: CompatControlPayload | DrivePayload): string {
@@ -159,9 +173,12 @@ export function buildUdpGatewayControlMessage(payload: CompatControlPayload | Dr
   if (command === "stop") {
     return JSON.stringify({ cmd: "stop", speed: 0, duration_ms: 0 });
   }
+  const speed = payload.cmd === "drive"
+    ? Math.max(CAR_LOCAL_UDP_CONTROL_SPEED, wheelOutputSpeed(payload))
+    : Math.max(CAR_LOCAL_UDP_CONTROL_SPEED, payload.speed ?? CAR_LOCAL_UDP_CONTROL_SPEED);
   return JSON.stringify({
     cmd: command,
-    speed: CAR_LOCAL_UDP_CONTROL_SPEED,
+    speed,
     duration_ms: CAR_LOCAL_UDP_CONTROL_DURATION_MS
   });
 }

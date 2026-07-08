@@ -41,19 +41,38 @@ test("normalizes base station telemetry into one reading per sensor packet", () 
 });
 
 test("maps web control commands to current car HTTP payloads", () => {
-  assert.equal(toCarControlPayload({ action: "forward", speed: 60 }), "FORWARD:60");
-  assert.equal(toCarControlPayload({ action: "backward", speed: 20 }), "BACKWARD:20");
-  assert.equal(toCarControlPayload({ action: "stop", speed: 90 }), "STOP:0");
+  assert.deepEqual(JSON.parse(toCarControlPayload({ action: "forward", speed: 60 })), {
+    cmd: "forward",
+    speed: 60,
+    duration_ms: 600
+  });
+  assert.deepEqual(JSON.parse(toCarControlPayload({ action: "backward", speed: 20 })), {
+    cmd: "backward",
+    speed: 20,
+    duration_ms: 600
+  });
+  assert.deepEqual(JSON.parse(toCarControlPayload({ action: "stop", speed: 90 })), {
+    cmd: "stop",
+    speed: 0,
+    duration_ms: 0
+  });
+  assert.deepEqual(JSON.parse(toCarControlPayload({ action: "drive", speed: 0, left: 70, right: 0, durationMs: 350 })), {
+    cmd: "right",
+    speed: 70,
+    duration_ms: 350
+  });
 });
 
 test("parses patrol steps with bounded speed and duration", () => {
   const steps = parsePatrolSteps([
     { action: "forward", speed: 120, durationMs: 90000 },
+    { action: "left", speed: 35, durationMs: 800 },
     { action: "stop", speed: 0, durationMs: 1000 }
   ]);
 
   assert.deepEqual(steps, [
     { action: "forward", speed: 100, durationMs: 60000 },
+    { action: "left", speed: 35, durationMs: 800 },
     { action: "stop", speed: 0, durationMs: 1000 }
   ]);
 });

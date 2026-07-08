@@ -4,8 +4,7 @@ import { api, type ControlCommand, type DeviceRecord } from "../api";
 import type { ConnectionMode } from "../App";
 import {
   buildCloudControlBody,
-  buildCompatControlPayload,
-  buildDrivePayload,
+  buildCompatPayloadFromWheels,
   commandSpeedFromJoystick,
   JOYSTICK_COMMAND_DURATION_MS,
   JOYSTICK_MAX_PERCENT,
@@ -72,11 +71,7 @@ export function Control({
     setSending(true);
     try {
       if (connectionMode === "local") {
-        try {
-          await localCarApi.send(buildDrivePayload(nextWheels, JOYSTICK_COMMAND_DURATION_MS));
-        } catch {
-          await localCarApi.send(buildCompatControlPayload(joystickToLegacyCommand(nextVector), commandSpeedFromJoystick(nextVector, maxPercent), JOYSTICK_COMMAND_DURATION_MS));
-        }
+        await localCarApi.send(buildCompatPayloadFromWheels(nextWheels, JOYSTICK_COMMAND_DURATION_MS));
         onNotice(`已发送本地小车控制：${wheelSummary(nextWheels)}`);
       } else {
         const result = await api.command(token, buildCloudControlBody(device.id, device.base_station_id, nextWheels, JOYSTICK_COMMAND_DURATION_MS));

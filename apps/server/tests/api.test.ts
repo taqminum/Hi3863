@@ -48,7 +48,11 @@ test("admin can update device metadata and command history is visible", async ()
     });
     assert.equal(history.status, 200);
     const historyBody = await history.json() as { commands: Array<{ payload: string }> };
-    assert.equal(historyBody.commands[0].payload, "FORWARD:66");
+    assert.deepEqual(JSON.parse(historyBody.commands[0].payload), {
+      cmd: "forward",
+      speed: 66,
+      duration_ms: 350
+    });
   } finally {
     await app.close();
   }

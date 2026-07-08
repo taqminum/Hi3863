@@ -74,9 +74,13 @@ html, body {
 }
 body {
   background: #000;
+  --ws63-system-right-reserve: clamp(72px, env(safe-area-inset-right, 96px), 128px);
+  justify-content: flex-start !important;
+  align-items: stretch !important;
+  padding-right: var(--ws63-system-right-reserve) !important;
 }
 .device-container {
-  width: 100vw !important;
+  width: calc(100vw - var(--ws63-system-right-reserve)) !important;
   height: 100dvh !important;
   max-width: none !important;
   max-height: none !important;
@@ -132,17 +136,134 @@ body[data-active-view="view-control"] #view-control {
   height: 100% !important;
   overflow: hidden !important;
 }
+body[data-active-view="view-control"] .speed-value-display {
+  transform: translateY(-12px);
+}
 </style>`;
+
+const touchIsolationScript = `<script id="ws63-mobile-touch-isolation">
+(() => {
+  const originalAddEventListener = EventTarget.prototype.addEventListener;
+  const activeTouchIds = { joystick: null, speed: null };
+  const windowListenerCounts = { touchmove: 0, touchend: 0 };
+
+  function roleForNode(node) {
+    if (!node || !node.closest) return null;
+    if (node.closest("#joystick-base")) return "joystick";
+    if (node.closest("#speed-slider")) return "speed";
+    return null;
+  }
+
+  function roleForPoint(point) {
+    if (!point) return null;
+    const element = document.elementFromPoint(point.clientX, point.clientY);
+    return roleForNode(element);
+  }
+
+  function activeIdForRole(role) {
+    return role === "joystick" ? activeTouchIds.joystick : activeTouchIds.speed;
+  }
+
+  function setActiveId(role, id) {
+    if (role === "joystick") activeTouchIds.joystick = id;
+    if (role === "speed") activeTouchIds.speed = id;
+  }
+
+  function touchListToArray(list) {
+    return Array.from(list || []);
+  }
+
+  function touchForRole(event, role) {
+    const touches = touchListToArray(event.touches);
+    const changedTouches = touchListToArray(event.changedTouches);
+    const activeId = activeIdForRole(role);
+    if (activeId !== null && activeId !== undefined) {
+      return touches.find((touch) => touch.identifier === activeId)
+        || changedTouches.find((touch) => touch.identifier === activeId)
+        || null;
+    }
+    const candidates = changedTouches.length > 0 ? changedTouches : touches;
+    return candidates.find((touch) => roleForPoint(touch) === role) || null;
+  }
+
+  function eventForTouch(event, touch) {
+    if (!touch) return null;
+    const isolated = Object.create(event);
+    Object.defineProperty(isolated, "touches", { configurable: true, value: [touch] });
+    Object.defineProperty(isolated, "targetTouches", { configurable: true, value: [touch] });
+    Object.defineProperty(isolated, "changedTouches", { configurable: true, value: [touch] });
+    isolated.preventDefault = event.preventDefault.bind(event);
+    isolated.stopPropagation = event.stopPropagation.bind(event);
+    isolated.stopImmediatePropagation = event.stopImmediatePropagation.bind(event);
+    return isolated;
+  }
+
+  function roleForWindowTouchListener(type) {
+    if (type !== "touchmove" && type !== "touchend") return null;
+    windowListenerCounts[type] += 1;
+    if (windowListenerCounts[type] === 1) return "joystick";
+    if (windowListenerCounts[type] === 2) return "speed";
+    return null;
+  }
+
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (typeof listener !== "function") {
+      return originalAddEventListener.call(this, type, listener, options);
+    }
+
+    const targetRole = type === "touchstart" ? roleForNode(this) : null;
+    const windowRole = this === window ? roleForWindowTouchListener(type) : null;
+    const role = targetRole || windowRole;
+
+    if (!role) {
+      return originalAddEventListener.call(this, type, listener, options);
+    }
+
+    const wrapped = function(event) {
+      if (type === "touchstart") {
+        const touch = touchForRole(event, role);
+        if (!touch) return;
+        setActiveId(role, touch.identifier);
+        return listener.call(this, eventForTouch(event, touch));
+      }
+
+      if (type === "touchmove") {
+        const touch = touchForRole(event, role);
+        if (!touch) return;
+        return listener.call(this, eventForTouch(event, touch));
+      }
+
+      if (type === "touchend") {
+        const activeId = activeIdForRole(role);
+        const ended = touchListToArray(event.changedTouches).some((touch) => touch.identifier === activeId);
+        if (!ended) return;
+        setActiveId(role, null);
+        return listener.call(this, event);
+      }
+
+      return listener.call(this, event);
+    };
+
+    return originalAddEventListener.call(this, type, wrapped, options);
+  };
+
+  window.__ws63TouchIsolation = {
+    pick(event, role) {
+      return touchForRole(event, role);
+    }
+  };
+})();
+</script>`;
 
 const bridgeScript = `<script id="ws63-mobile-host-bridge">
 (() => {
   const SOURCE = "ws63-mobile-open-design";
   const HOST = "ws63-mobile-host";
-  const DRIVE_REPEAT_MS = 450;
+  const DRIVE_REPEAT_MS = 1000;
   let lastDriveAt = 0;
   let currentSpeed = 0.8;
-  let heldDrive = null;
-  let heldDriveTimer = null;
+  let driveTimer = 0;
+  let latestDrivePayload = null;
 
   function send(type, payload) {
     window.parent.postMessage({ source: SOURCE, type, ...(payload || {}) }, "*");
@@ -157,6 +278,21 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const nodes = Array.from(document.querySelectorAll(".metric-value, .stat-value, .ov-value, .panel-value"));
     const target = nodes.find((node) => node.textContent && node.textContent.includes(label));
     if (target && value !== undefined && value !== null) target.textContent = String(value);
+  }
+
+  function setMetric(index, value) {
+    const node = document.querySelectorAll(".ov-data-value")[index];
+    if (node && value !== undefined && value !== null) node.textContent = String(value);
+  }
+
+  function updateChart(canvasId, values) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !window.Chart || !Array.isArray(values)) return;
+    const chart = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
+    if (!chart || !chart.data || !chart.data.datasets || !chart.data.datasets[0]) return;
+    chart.data.labels = values.map((_, index) => String(index + 1));
+    chart.data.datasets[0].data = values;
+    chart.update("none");
   }
 
   function setActiveView(target) {
@@ -179,9 +315,12 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     return currentSpeed;
   }
 
-  function sendDriveFromPoint(point, base) {
-    if (!point) return;
+  function emitDriveFromPointer(event, force) {
+    const base = document.getElementById("joystick-base");
+    if (!base) return;
     const rect = base.getBoundingClientRect();
+    const point = event.touches ? (window.__ws63TouchIsolation?.pick(event, "joystick") || event.touches[0]) : event;
+    if (!point) return;
     const dx = point.clientX - rect.left - rect.width / 2;
     const dy = point.clientY - rect.top - rect.height / 2;
     const radius = 40;
@@ -190,56 +329,56 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const left = Math.max(-100, Math.min(100, Math.round((y + x) * 70)));
     const right = Math.max(-100, Math.min(100, Math.round((y - x) * 70)));
     if (Math.hypot(x, y) < 0.16) {
-      clearHeldDrive();
-      send("stop");
+      stopDrive();
       return;
     }
-    heldDrive = { left, right, speed: readSpeed(), durationMs: 350 };
-    send("drive", heldDrive);
+    startDrive({ left, right, speed: readSpeed(), durationMs: 350 }, force);
   }
 
-  function emitHeldDrive() {
-    if (heldDrive) send("drive", heldDrive);
+  function repeatDrive(force) {
+    if (!latestDrivePayload) return;
+    const now = Date.now();
+    if (!force && now - lastDriveAt < 280) return;
+    lastDriveAt = now;
+    send("drive", latestDrivePayload);
   }
 
-  function ensureHeldDriveTimer() {
-    if (heldDriveTimer) return;
-    heldDriveTimer = window.setInterval(() => emitHeldDrive(), DRIVE_REPEAT_MS);
-  }
-
-  function clearHeldDrive() {
-    heldDrive = null;
-    if (heldDriveTimer) {
-      window.clearInterval(heldDriveTimer);
-      heldDriveTimer = null;
+  function startDrive(payload, force) {
+    latestDrivePayload = payload;
+    repeatDrive(Boolean(force));
+    if (!driveTimer) {
+      driveTimer = window.setInterval(() => repeatDrive(false), DRIVE_REPEAT_MS);
     }
   }
 
-  function emitDriveFromPointer(event, force) {
-    const base = document.getElementById("joystick-base");
-    if (!base) return;
-    const now = Date.now();
-    if (!force && now - lastDriveAt < 180) return;
-    lastDriveAt = now;
-    const point = event.touches ? event.touches[0] : event;
-    sendDriveFromPoint(point, base);
-    ensureHeldDriveTimer();
+  function stopDrive() {
+    latestDrivePayload = null;
+    if (driveTimer) {
+      window.clearInterval(driveTimer);
+      driveTimer = 0;
+    }
+    send("stop");
   }
 
   function attachControlBridge() {
     const joystickBase = document.getElementById("joystick-base");
     if (joystickBase) {
       joystickBase.addEventListener("mousedown", (event) => emitDriveFromPointer(event, true));
-      joystickBase.addEventListener("touchstart", (event) => emitDriveFromPointer(event, true), { passive: true });
       joystickBase.addEventListener("mousemove", (event) => emitDriveFromPointer(event, false));
+      joystickBase.addEventListener("touchstart", (event) => emitDriveFromPointer(event, true), { passive: true });
       joystickBase.addEventListener("touchmove", (event) => emitDriveFromPointer(event, false), { passive: true });
-      joystickBase.addEventListener("mouseup", () => { clearHeldDrive(); send("stop"); });
-      joystickBase.addEventListener("mouseleave", () => { clearHeldDrive(); send("stop"); });
-      joystickBase.addEventListener("touchend", () => { clearHeldDrive(); send("stop"); });
-      joystickBase.addEventListener("touchcancel", () => { clearHeldDrive(); send("stop"); });
+      window.addEventListener("mouseup", stopDrive);
+      window.addEventListener("touchend", stopDrive);
+      window.addEventListener("blur", stopDrive);
     }
     document.getElementById("speed-slider")?.addEventListener("touchend", readSpeed);
     document.getElementById("speed-slider")?.addEventListener("mouseup", readSpeed);
+    document.querySelector(".btn-primary")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      send("create-patrol", { template: "standard" });
+    }, true);
+    document.querySelector(".agent-card")?.addEventListener("click", () => send("refresh-agent"));
   }
 
   function applySnapshot(snapshot) {
@@ -249,6 +388,23 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     patchByText("°C", snapshot.temperatureLabel);
     patchByText("%RH", snapshot.humidityLabel);
     patchByText("lx", snapshot.lightnessLabel);
+    setMetric(0, snapshot.rssiLabel);
+    setMetric(1, snapshot.temperatureLabel);
+    setMetric(2, snapshot.humidityLabel);
+    setMetric(3, snapshot.lightnessLabel);
+    const statusValues = document.querySelectorAll(".status-val");
+    if (statusValues[0]) statusValues[0].textContent = snapshot.deviceName;
+    if (statusValues[1]) statusValues[1].textContent = snapshot.baseStationName + " " + snapshot.baseStationStatus;
+    if (statusValues[2]) statusValues[2].textContent = snapshot.rssiLabel;
+    const agentDesc = document.querySelector(".agent-desc");
+    if (agentDesc) agentDesc.textContent = snapshot.agentSummary;
+    updateChart("ov-chart-signal", snapshot.series.rssi);
+    updateChart("ov-chart-temp", snapshot.series.temperature);
+    updateChart("ov-chart-humid", snapshot.series.humidity);
+    updateChart("ov-chart-light", snapshot.series.lightness);
+    updateChart("dt-chart-temp", snapshot.series.temperature);
+    updateChart("dt-chart-humid", snapshot.series.humidity);
+    updateChart("dt-chart-light", snapshot.series.lightness);
     window.__ws63MobileSnapshot = snapshot;
   }
 
@@ -275,13 +431,22 @@ function injectBeforeCloseTag(html: string, closeTag: string, snippet: string): 
   return `${html.slice(0, index)}${snippet}${html.slice(index)}`;
 }
 
+function injectBeforeOpenDesignScript(html: string, scriptTag: string, snippet: string): string {
+  const index = html.indexOf(scriptTag);
+  if (index === -1) return injectBeforeCloseTag(html, "</head>", snippet);
+  return `${html.slice(0, index)}${snippet}${html.slice(index)}`;
+}
+
 export function buildMobileOpenDesignSrcDoc(html: string): string {
   const withPatch = html.includes("ws63-mobile-landscape-patch")
     ? html
     : injectBeforeCloseTag(html, "</head>", landscapePatch);
-  return withPatch.includes("ws63-mobile-host-bridge")
+  const withTouchIsolation = withPatch.includes("ws63-mobile-touch-isolation")
     ? withPatch
-    : injectBeforeCloseTag(withPatch, "</body>", bridgeScript);
+    : injectBeforeOpenDesignScript(withPatch, "<script src=\"https://unpkg.com/lucide@latest\"></script>", touchIsolationScript);
+  return withTouchIsolation.includes("ws63-mobile-host-bridge")
+    ? withTouchIsolation
+    : injectBeforeCloseTag(withTouchIsolation, "</body>", bridgeScript);
 }
 
 function formatNumber(value: number | undefined, digits = 1): string {
