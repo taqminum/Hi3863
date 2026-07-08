@@ -8,7 +8,7 @@ import type {
   Reading,
   User
 } from "../api";
-import type { ConnectionMode } from "../App";
+import type { ConnectionMode } from "../types";
 
 export type MobileOpenDesignTab = "overview" | "control" | "tasks" | "data" | "manage";
 

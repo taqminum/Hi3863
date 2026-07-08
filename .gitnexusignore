@@ -1,0 +1,87 @@
+# Keep GitNexus focused on project code and handoff docs instead of the full
+# WS63 SDK/toolchain tree. The generated index itself stays local.
+
+.git/
+.gitnexus/
+
+# Local assistant / editor state
+.claude/
+.codex/
+.workbuddy/
+.worktrees/
+.vscode/
+src/.vscode/
+.github/modernize/
+
+# Dependencies, builds, and runtime state
+node_modules/
+apps/**/node_modules/
+apps/**/dist/
+apps/web/android/.gradle/
+apps/web/android/build/
+apps/web/android/app/build/
+apps/web/android/app/src/main/assets/public/
+apps/web/android/app/src/main/assets/capacitor.config.json
+apps/web/android/local.properties
+data/
+apps/server/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.tsbuildinfo
+*.log
+*.tmp
+*.bak
+
+# Screenshots, packaged artifacts, and generated binaries
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.elf
+*.map
+*.lst
+*.asm
+*.fwpkg
+*.bin
+*.hex
+
+# Local-only reference material
+fb_code/
+ws63_docs/
+鍙傝禌璧勬枡/
+浣滃搧绠€浠?md
+
+# Narrow firmware indexing to the project application and gateway product.
+src/*
+!src/application/
+src/application/*
+!src/application/samples/
+src/application/samples/*
+!src/application/samples/Farsight/
+src/application/samples/Farsight/*
+!src/application/samples/Farsight/ws63e_env_patrol_car/
+!src/application/samples/Farsight/ws63e_env_patrol_car/**
+
+vendor/*
+!vendor/BearPi-Pico_H3863/
+vendor/BearPi-Pico_H3863/*
+!vendor/BearPi-Pico_H3863/products/
+vendor/BearPi-Pico_H3863/products/*
+!vendor/BearPi-Pico_H3863/products/ws63e_env_gateway/
+!vendor/BearPi-Pico_H3863/products/ws63e_env_gateway/**
+
+# Large SDK/tooling folders are intentionally excluded from the repository map.
+tools/
+src/tools/
+src/open_source/
+src/output/
+src/analyzerJson/
+src/interim_binary/
