@@ -17,6 +17,21 @@ test("locks control view scrolling through active view CSS", () => {
   assert.match(result, /overflow: hidden !important/);
 });
 
+test("repeats joystick drive commands while the pointer is held", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /DRIVE_REPEAT_MS = 1000/);
+  assert.match(result, /window\.setInterval\(\(\) => emitHeldDrive\(\), DRIVE_REPEAT_MS\)/);
+  assert.match(result, /clearHeldDrive\(\)/);
+});
+
+test("stretches overview content to avoid empty lower screen on landscape phones", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /#view-overview\.active/);
+  assert.match(result, /grid-template-rows: minmax\(108px, 0\.72fr\) minmax\(260px, 1\.35fr\) !important/);
+  assert.match(result, /#view-overview \.data-grid/);
+  assert.match(result, /height: auto !important/);
+});
+
 test("builds readable fallback snapshot when telemetry is empty", () => {
   const user: User = { id: "u1", username: "admin", displayName: "管理员", role: "admin" };
   const selectedDevice: DeviceRecord = {

@@ -1,13 +1,51 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  CAR_LOCAL_BASE_URL,
+  CAR_LOCAL_UDP_HOST,
+  CAR_LOCAL_UDP_PORT,
   buildCompatControlPayload,
+  buildUdpGatewayCommand,
+  buildUdpGatewayControlMessage,
   buildCloudControlBody,
   buildDrivePayload,
   joystickToDifferential,
   joystickToLegacyCommand,
   normalizeCarTelemetry
 } from "./carProtocol.ts";
+
+test("uses BearPi gateway LAN as the default local car API", () => {
+  assert.equal(CAR_LOCAL_BASE_URL, "http://192.168.6.1:8080");
+});
+
+test("uses BearPi UDP gateway as the default local transport", () => {
+  assert.equal(CAR_LOCAL_UDP_HOST, "192.168.6.1");
+  assert.equal(CAR_LOCAL_UDP_PORT, 8888);
+});
+
+test("maps local drive payloads to current BearPi UDP commands", () => {
+  assert.equal(buildUdpGatewayCommand({ cmd: "drive", left: 50, right: 50, duration_ms: 350 }), "forward");
+  assert.equal(buildUdpGatewayCommand({ cmd: "drive", left: -50, right: -50, duration_ms: 350 }), "backward");
+  assert.equal(buildUdpGatewayCommand({ cmd: "drive", left: -40, right: 40, duration_ms: 350 }), "left");
+  assert.equal(buildUdpGatewayCommand({ cmd: "drive", left: 40, right: -40, duration_ms: 350 }), "right");
+  assert.equal(buildUdpGatewayCommand({ cmd: "drive", left: 0, right: 0, duration_ms: 350 }), "stop");
+  assert.equal(buildUdpGatewayCommand({ cmd: "stop", speed: 0, duration_ms: 0 }), "stop");
+});
+
+test("builds longer-lived JSON commands for smooth BearPi UDP control", () => {
+  assert.equal(
+    buildUdpGatewayControlMessage({ cmd: "drive", left: 50, right: 50, duration_ms: 350 }),
+    JSON.stringify({ cmd: "forward", speed: 35, duration_ms: 2200 })
+  );
+  assert.equal(
+    buildUdpGatewayControlMessage({ cmd: "drive", left: 40, right: -40, duration_ms: 350 }),
+    JSON.stringify({ cmd: "right", speed: 35, duration_ms: 2200 })
+  );
+  assert.equal(
+    buildUdpGatewayControlMessage({ cmd: "stop", speed: 0, duration_ms: 0 }),
+    JSON.stringify({ cmd: "stop", speed: 0, duration_ms: 0 })
+  );
+});
 
 test("joystick maps to bounded differential wheel output", () => {
   assert.deepEqual(joystickToDifferential({ x: 0, y: 0 }, { maxPercent: 70 }), { left: 0, right: 0 });

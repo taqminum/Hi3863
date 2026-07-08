@@ -88,11 +88,42 @@ body {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  background: var(--bg-app) !important;
 }
 .side-nav {
   flex: 0 0 80px !important;
   position: relative !important;
   z-index: 100 !important;
+}
+#view-overview.active {
+  display: grid !important;
+  grid-template-rows: minmax(108px, 0.72fr) minmax(260px, 1.35fr) !important;
+  gap: 16px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+#view-overview .dash-top-row {
+  min-height: 0 !important;
+  margin-bottom: 0 !important;
+}
+#view-overview .topology-card,
+#view-overview .risk-card {
+  min-height: 0 !important;
+}
+#view-overview .data-grid {
+  height: auto !important;
+  min-height: 0 !important;
+}
+#view-overview .ov-data-card {
+  min-height: 0 !important;
+}
+#view-overview .ov-chart-container {
+  flex: 1 1 auto !important;
+  min-height: 90px !important;
+  height: auto !important;
+}
+.view-section.active:not(#view-overview):not(#view-control) {
+  min-height: 100% !important;
 }
 body[data-active-view="view-control"] .content-area {
   overflow: hidden !important;
@@ -107,8 +138,11 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
 (() => {
   const SOURCE = "ws63-mobile-open-design";
   const HOST = "ws63-mobile-host";
+  const DRIVE_REPEAT_MS = 450;
   let lastDriveAt = 0;
   let currentSpeed = 0.8;
+  let heldDrive = null;
+  let heldDriveTimer = null;
 
   function send(type, payload) {
     window.parent.postMessage({ source: SOURCE, type, ...(payload || {}) }, "*");
@@ -145,15 +179,9 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     return currentSpeed;
   }
 
-  function emitDriveFromPointer(event, force) {
-    const base = document.getElementById("joystick-base");
-    if (!base) return;
-    const now = Date.now();
-    if (!force && now - lastDriveAt < 180) return;
-    lastDriveAt = now;
-    const rect = base.getBoundingClientRect();
-    const point = event.touches ? event.touches[0] : event;
+  function sendDriveFromPoint(point, base) {
     if (!point) return;
+    const rect = base.getBoundingClientRect();
     const dx = point.clientX - rect.left - rect.width / 2;
     const dy = point.clientY - rect.top - rect.height / 2;
     const radius = 40;
@@ -162,19 +190,53 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const left = Math.max(-100, Math.min(100, Math.round((y + x) * 70)));
     const right = Math.max(-100, Math.min(100, Math.round((y - x) * 70)));
     if (Math.hypot(x, y) < 0.16) {
+      clearHeldDrive();
       send("stop");
       return;
     }
-    send("drive", { left, right, speed: readSpeed(), durationMs: 350 });
+    heldDrive = { left, right, speed: readSpeed(), durationMs: 350 };
+    send("drive", heldDrive);
+  }
+
+  function emitHeldDrive() {
+    if (heldDrive) send("drive", heldDrive);
+  }
+
+  function ensureHeldDriveTimer() {
+    if (heldDriveTimer) return;
+    heldDriveTimer = window.setInterval(() => emitHeldDrive(), DRIVE_REPEAT_MS);
+  }
+
+  function clearHeldDrive() {
+    heldDrive = null;
+    if (heldDriveTimer) {
+      window.clearInterval(heldDriveTimer);
+      heldDriveTimer = null;
+    }
+  }
+
+  function emitDriveFromPointer(event, force) {
+    const base = document.getElementById("joystick-base");
+    if (!base) return;
+    const now = Date.now();
+    if (!force && now - lastDriveAt < 180) return;
+    lastDriveAt = now;
+    const point = event.touches ? event.touches[0] : event;
+    sendDriveFromPoint(point, base);
+    ensureHeldDriveTimer();
   }
 
   function attachControlBridge() {
     const joystickBase = document.getElementById("joystick-base");
     if (joystickBase) {
+      joystickBase.addEventListener("mousedown", (event) => emitDriveFromPointer(event, true));
+      joystickBase.addEventListener("touchstart", (event) => emitDriveFromPointer(event, true), { passive: true });
       joystickBase.addEventListener("mousemove", (event) => emitDriveFromPointer(event, false));
       joystickBase.addEventListener("touchmove", (event) => emitDriveFromPointer(event, false), { passive: true });
-      joystickBase.addEventListener("mouseup", () => send("stop"));
-      joystickBase.addEventListener("touchend", () => send("stop"));
+      joystickBase.addEventListener("mouseup", () => { clearHeldDrive(); send("stop"); });
+      joystickBase.addEventListener("mouseleave", () => { clearHeldDrive(); send("stop"); });
+      joystickBase.addEventListener("touchend", () => { clearHeldDrive(); send("stop"); });
+      joystickBase.addEventListener("touchcancel", () => { clearHeldDrive(); send("stop"); });
     }
     document.getElementById("speed-slider")?.addEventListener("touchend", readSpeed);
     document.getElementById("speed-slider")?.addEventListener("mouseup", readSpeed);

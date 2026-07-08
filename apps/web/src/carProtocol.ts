@@ -59,7 +59,11 @@ export interface LocalTelemetrySample {
   recordedAt: string;
 }
 
-export const CAR_LOCAL_BASE_URL = "http://192.168.5.1:8080";
+export const CAR_LOCAL_BASE_URL = "http://192.168.6.1:8080";
+export const CAR_LOCAL_UDP_HOST = "192.168.6.1";
+export const CAR_LOCAL_UDP_PORT = 8888;
+export const CAR_LOCAL_UDP_CONTROL_SPEED = 35;
+export const CAR_LOCAL_UDP_CONTROL_DURATION_MS = 2200;
 export const JOYSTICK_DEAD_ZONE = 0.18;
 export const JOYSTICK_MAX_PERCENT = 70;
 export const JOYSTICK_REPEAT_MS = 300;
@@ -134,6 +138,32 @@ export function buildDrivePayload(output: WheelOutput, durationMs: number): Driv
     right: Math.round(clamp(output.right, -100, 100)),
     duration_ms: Math.round(clamp(durationMs, 0, 3000))
   };
+}
+
+export function buildUdpGatewayCommand(payload: CompatControlPayload | DrivePayload): CarCommand {
+  if (payload.cmd !== "drive") return payload.cmd;
+  const left = clamp(payload.left, -100, 100);
+  const right = clamp(payload.right, -100, 100);
+  if (Math.abs(left) < MIN_EFFECTIVE_PERCENT && Math.abs(right) < MIN_EFFECTIVE_PERCENT) return "stop";
+  const average = (left + right) / 2;
+  const turn = left - right;
+  if (Math.abs(average) >= Math.abs(turn) / 2) return average > 0 ? "forward" : "backward";
+  return turn > 0 ? "right" : "left";
+}
+
+export function buildUdpGatewayControlMessage(payload: CompatControlPayload | DrivePayload): string {
+  const command = buildUdpGatewayCommand(payload);
+  if (command === "auto_start" || command === "auto_stop") {
+    return JSON.stringify({ cmd: command });
+  }
+  if (command === "stop") {
+    return JSON.stringify({ cmd: "stop", speed: 0, duration_ms: 0 });
+  }
+  return JSON.stringify({
+    cmd: command,
+    speed: CAR_LOCAL_UDP_CONTROL_SPEED,
+    duration_ms: CAR_LOCAL_UDP_CONTROL_DURATION_MS
+  });
 }
 
 export function buildCloudControlBody(deviceId: string, baseStationId: string, output: WheelOutput, durationMs: number): CloudControlBody {

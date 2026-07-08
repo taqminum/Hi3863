@@ -23,6 +23,7 @@ import {
   type HostToMobileOpenDesignMessage,
   type MobileOpenDesignToHostMessage
 } from "./mobileOpenDesign";
+import { defaultMobileConnectionMode, mobileSessionAllowsLocalControl, shouldPollLocalTelemetry } from "./mobileSession";
 
 const mobileFallbackDevice: DeviceRecord = {
   id: "ws63-car-001",
@@ -33,6 +34,13 @@ const mobileFallbackDevice: DeviceRecord = {
   direct_url: "",
   last_seen: new Date(0).toISOString(),
   remark: "APK 横屏控制台默认设备"
+};
+
+const mobileLocalUser: User = {
+  id: "local-field-operator",
+  username: "local",
+  displayName: "本地联调",
+  role: "operator"
 };
 
 function readStoredUser(): User | null {
@@ -48,9 +56,11 @@ function readStoredUser(): User | null {
 
 export function MobileConsoleApp() {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const lastLocalControlAtRef = useRef(0);
   const srcDoc = useMemo(() => buildMobileOpenDesignSrcDoc(prototypeHtml), []);
   const [token, setToken] = useState(() => localStorage.getItem("ws63-token"));
-  const [user, setUser] = useState<User | null>(readStoredUser);
+  const [connectionMode] = useState<ConnectionMode>(() => defaultMobileConnectionMode(localStorage.getItem("ws63-connection-mode")));
+  const [user, setUser] = useState<User | null>(() => readStoredUser() ?? (connectionMode === "local" ? mobileLocalUser : null));
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [baseStations, setBaseStations] = useState<BaseStationRecord[]>([]);
   const [readings, setReadings] = useState<Reading[]>([]);
@@ -60,7 +70,6 @@ export function MobileConsoleApp() {
   const [audits, setAudits] = useState<AuditLog[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("ws63-car-001");
   const [notice, setNotice] = useState("");
-  const [connectionMode] = useState<ConnectionMode>(() => localStorage.getItem("ws63-connection-mode") === "local" ? "local" : "cloud");
   const [localSamples, setLocalSamples] = useState<LocalTelemetrySample[]>([]);
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0] ?? mobileFallbackDevice;
@@ -70,8 +79,8 @@ export function MobileConsoleApp() {
     localStorage.removeItem("ws63-token");
     localStorage.removeItem("ws63-user");
     setToken(null);
-    setUser(null);
-  }, []);
+    setUser(connectionMode === "local" ? mobileLocalUser : null);
+  }, [connectionMode]);
 
   const guarded = useCallback(async (task: () => Promise<void>) => {
     try {
@@ -110,6 +119,7 @@ export function MobileConsoleApp() {
     if (connectionMode !== "local") return;
     let cancelled = false;
     async function pollLocalCar() {
+      if (!shouldPollLocalTelemetry(Date.now(), lastLocalControlAtRef.current)) return;
       try {
         const sample = await localCarApi.telemetry();
         if (!cancelled) {
@@ -176,7 +186,7 @@ export function MobileConsoleApp() {
   }, [postSnapshot]);
 
   const handleBridgeMessage = useCallback(async (message: MobileOpenDesignToHostMessage) => {
-    if (!token) return;
+    if (!mobileSessionAllowsLocalControl(connectionMode, token)) return;
     if (message.type === "ready") {
       postSnapshot();
       return;
@@ -188,8 +198,10 @@ export function MobileConsoleApp() {
     await guarded(async () => {
       if (message.type === "drive") {
         if (connectionMode === "local") {
+          lastLocalControlAtRef.current = Date.now();
           await localCarApi.send(buildDrivePayload({ left: message.left, right: message.right }, message.durationMs));
         } else {
+          if (!token) return;
           await api.command(token, {
             deviceId: selectedDevice.id,
             baseStationId: selectedDevice.base_station_id,
@@ -204,8 +216,10 @@ export function MobileConsoleApp() {
       }
       if (message.type === "stop") {
         if (connectionMode === "local") {
+          lastLocalControlAtRef.current = Date.now();
           await localCarApi.send({ cmd: "stop", speed: 0, duration_ms: 0 });
         } else {
+          if (!token) return;
           await api.command(token, {
             deviceId: selectedDevice.id,
             baseStationId: selectedDevice.base_station_id,
@@ -216,6 +230,11 @@ export function MobileConsoleApp() {
         return;
       }
       if (message.type === "create-patrol") {
+        if (connectionMode === "local") {
+          setNotice("本地联调模式暂不创建云端巡检任务");
+          return;
+        }
+        if (!token) return;
         await api.createPatrol(token, {
           deviceId: selectedDevice.id,
           baseStationId: selectedDevice.base_station_id,
@@ -231,6 +250,11 @@ export function MobileConsoleApp() {
         return;
       }
       if (message.type === "refresh-agent") {
+        if (connectionMode === "local") {
+          setNotice("本地联调模式暂不生成云端 Agent 报告");
+          return;
+        }
+        if (!token) return;
         await api.createReport(token, selectedDevice.id);
         await refresh();
       }
@@ -247,7 +271,7 @@ export function MobileConsoleApp() {
     return () => window.removeEventListener("message", onMessage);
   }, [handleBridgeMessage]);
 
-  if (!token || !user) {
+  if (connectionMode !== "local" && (!token || !user)) {
     return <Login onLogin={(nextToken, nextUser) => {
       localStorage.setItem("ws63-token", nextToken);
       localStorage.setItem("ws63-user", JSON.stringify(nextUser));
