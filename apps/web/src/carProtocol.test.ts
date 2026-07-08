@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCompatControlPayload,
+  buildCompatPayloadFromWheels,
   buildCloudControlBody,
   buildDrivePayload,
   joystickToDifferential,
   joystickToLegacyCommand,
-  normalizeCarTelemetry
+  normalizeCarTelemetry,
+  wheelOutputToLegacyCommand
 } from "./carProtocol.ts";
 
 test("joystick maps to bounded differential wheel output", () => {
@@ -30,6 +32,18 @@ test("builds current firmware compatible payload", () => {
   assert.deepEqual(buildCompatControlPayload("left", 80, 900), { cmd: "left", speed: 50, duration_ms: 900 });
   assert.deepEqual(buildCompatControlPayload("stop", 99, 900), { cmd: "stop", speed: 0, duration_ms: 0 });
   assert.deepEqual(buildCompatControlPayload("auto_start", 99, 900), { cmd: "auto_start" });
+});
+
+test("downgrades wheel output to current firmware compatible payload", () => {
+  assert.equal(wheelOutputToLegacyCommand({ left: 70, right: 70 }), "forward");
+  assert.equal(wheelOutputToLegacyCommand({ left: -70, right: -70 }), "backward");
+  assert.equal(wheelOutputToLegacyCommand({ left: 70, right: -20 }), "right");
+  assert.equal(wheelOutputToLegacyCommand({ left: -20, right: 70 }), "left");
+  assert.deepEqual(buildCompatPayloadFromWheels({ left: 70, right: -20 }, 350), {
+    cmd: "right",
+    speed: 50,
+    duration_ms: 350
+  });
 });
 
 test("builds future drive payload", () => {

@@ -1,117 +1,87 @@
 # 小车与星闪基站对接交接文档
 
-本文档给固件侧同学使用。当前仓库的软件侧已经完成 Web/APK、云端 API、命令队列、遥测入库和基础 Agent 分析；小车固件和基站固件由固件侧继续对接。软件侧不会直接改小车代码。
+本文档给固件侧同学使用。软件侧已经对齐当前小车固件协议：Web/APK 可以继续使用摇杆交互，但进入小车或基站的最终 `payload` 会降级为当前小车能解析的 JSON 方向命令。固件侧暂时不用为了本次联调立刻实现差速 `drive(left,right)`，后续如果时间充足再扩展。
 
-## 目标链路
+## 当前推荐链路
 
 正式演示链路：
 
 ```text
-Web/APK -> 云服务器 API -> 星闪基站 -> SLE -> 小车
-小车 -> SLE -> 星闪基站 -> 云服务器 API -> Web/APK
+APK/Web -> 云服务器 API -> 星闪基站 -> SLE -> WS63E 小车
+WS63E 小车 -> SLE -> 星闪基站 -> 云服务器 API -> APK/Web
 ```
 
-Web/APK 不直接依赖小车局域网。仓库中保留本地 SoftAP 模式，只作为小车单机调试和验收备用。
+本地调试链路：
 
-## 固件侧需要实现的内容
+```text
+APK/Web -> 小车 SoftAP HTTP -> WS63E 小车
+```
 
-固件侧优先完成 4 件事：
+小车 SoftAP 只作为调试和兜底，默认地址仍是 `http://192.168.5.1:8080`。
 
-1. 基站能轮询云端命令：`GET /api/base-stations/sle-base-001/commands/pending`。
-2. 基站能把命令 `payload` 通过 SLE 发给小车。
-3. 小车能解析并执行 `DRIVE:left:right:duration`。
-4. 基站能上传小车 telemetry，并回执命令状态。
+## 当前小车可直接执行的控制 payload
+
+软件侧现在发送给基站队列和本地小车 HTTP 的控制格式都是 JSON：
+
+```json
+{"cmd":"forward","speed":60,"duration_ms":350}
+{"cmd":"backward","speed":40,"duration_ms":350}
+{"cmd":"left","speed":50,"duration_ms":350}
+{"cmd":"right","speed":50,"duration_ms":350}
+{"cmd":"stop","speed":0,"duration_ms":0}
+{"cmd":"auto_start"}
+{"cmd":"auto_stop"}
+```
+
+约束：
+
+- `cmd`：`forward/backward/left/right/stop/auto_start/auto_stop`
+- `speed`：`0..100`
+- `duration_ms`：`0..3000`
+- APK 摇杆按住时约每 `300ms` 续发一次命令。
+- 小车当前 `800ms` 手动控制看门狗可以继续保留。
+- 松手、页面失焦或离开控制页时，APK 会发送 `stop`。
 
 ## 云端命令拉取
 
-基站请求：
+基站轮询：
 
 ```http
 GET /api/base-stations/sle-base-001/commands/pending
 X-Device-Key: <DEVICE_INGEST_KEY>
 ```
 
-返回：
+返回示例：
 
 ```json
 {
   "commands": [
     {
-      "id": "cmd-1720000000000-abcd",
+      "id": "cmd-1783480000000-abcd",
       "device_id": "ws63-car-001",
       "base_station_id": "sle-base-001",
       "action": "drive",
       "speed": 0,
-      "payload": "DRIVE:70:0:350",
+      "payload": "{\"cmd\":\"right\",\"speed\":70,\"duration_ms\":350}",
       "status": "pulled",
-      "created_at": "2026-07-07T10:00:00.000Z",
-      "expires_at": "2026-07-07T10:00:02.000Z"
+      "created_at": "2026-07-08T10:00:00.000Z",
+      "expires_at": "2026-07-08T10:00:02.000Z"
     }
   ]
 }
 ```
 
-基站只需要关注：
+说明：
 
-- `id`：后续回执用。
-- `payload`：原样通过 SLE 发给小车。
-- `expires_at`：如果基站本地判断命令已过期，可以丢弃，不再发给小车。
-
-## 小车控制 payload
-
-旧协议继续支持：
-
-```text
-FORWARD:<speed>
-BACKWARD:<speed>
-STOP:0
-```
-
-新增摇杆协议：
-
-```text
-DRIVE:<left_percent>:<right_percent>:<duration_ms>
-```
-
-含义：
-
-- `left_percent`：左轮输出，范围 `-100..100`。正数前进，负数后退。
-- `right_percent`：右轮输出，范围 `-100..100`。正数前进，负数后退。
-- `duration_ms`：命令保持时间，范围 `0..3000`。Web/APK 当前默认 `350ms`。
-
-示例：
-
-```text
-DRIVE:70:70:350    # 直行前进
-DRIVE:-50:-50:350  # 后退
-DRIVE:70:0:350     # 右转弧线
-DRIVE:0:70:350     # 左转弧线
-DRIVE:70:-70:350   # 原地右转
-STOP:0             # 停车
-```
-
-建议小车固件实现：
-
-1. 在现有 `control_command_parse()` 中优先判断 `DRIVE:` 前缀。
-2. 解析方式可用：`sscanf(payload, "DRIVE:%d:%d:%u", &left, &right, &duration_ms)`。
-3. 对 `left/right` 做 `-100..100` 限幅，对 `duration_ms` 做 `0..3000` 限幅。
-4. 新增电机层接口，例如：`car_motor_drive(int left_percent, int right_percent, uint32_t duration_ms)`。
-5. 左右轮符号决定方向，绝对值决定 PWM 占空比。
-6. 如果电机低占空比无法启动，在电机层做最小有效占空比补偿，不要改云端协议。
-7. 加超时保护：超过 `duration_ms + 200ms` 未收到新命令时自动停车。
-
-## 队列规则
-
-软件侧已经做了队列保护：
-
-- `drive` 命令有效期约 `2s`，过期不会再被基站拉取。
-- 新的 `drive` 会取消同一小车同一基站的旧 `drive`，避免摇杆拖动产生命令堆积。
-- `stop` 会取消旧 `drive`，并且自身会保留，保证松手停车优先。
-- 基站仍建议自己做一次本地超时保护，防止网络断开时小车继续运动。
+- `action` 可能仍是 `drive`，表示来源是 APK 摇杆。
+- `payload` 已经是当前小车可执行的 JSON，基站只需要原样通过 SLE 发给小车。
+- `drive` 命令有效期约 `2s`，过期后不会再被基站拉取。
+- 新的 `drive` 会取消同一设备同一基站的旧 `drive`，避免摇杆拖动堆积。
+- `stop` 会取消旧 `drive` 并保留自身，保证松手停车优先。
 
 ## 命令回执
 
-小车执行后，基站回执云端：
+基站发送给小车后回执云端：
 
 ```http
 PATCH /api/commands/<commandId>/ack
@@ -127,29 +97,25 @@ Content-Type: application/json
 {"status":"failed","errorMessage":"SLE timeout"}
 ```
 
-`status` 可选值：
+`status` 可选：
 
 - `sent`：基站已经发给小车。
-- `executed`：小车确认执行。
-- `failed`：发送或执行失败。
+- `executed`：小车确认执行，或当前阶段基站已经成功发出 SLE 数据。
+- `failed`：基站发送失败、小车未连接或 SLE 超时。
 
-如果当前固件链路暂时不方便做小车确认，可以先在基站发出 SLE 数据后回 `executed`，后续再拆成 `sent/executed` 两段。
+如果当前小车侧没有确认机制，基站可以先在 SLE 发送成功后直接回 `executed`。
 
 ## telemetry 上传
 
-基站上传小车环境数据：
+云端现在同时支持两种 telemetry 格式。
 
-```http
-POST /api/ingest/base-stations/sle-base-001/telemetry
-X-Device-Key: <DEVICE_INGEST_KEY>
-Content-Type: application/json
-```
+推荐基站上传平台格式：
 
 ```json
 {
   "batchId": "sle-base-001-1001",
   "sequence": 1001,
-  "receivedAt": "2026-07-07T10:00:00.000Z",
+  "receivedAt": "2026-07-08T10:00:00.000Z",
   "link": {
     "rssi": -48,
     "cachedCount": 0,
@@ -160,7 +126,7 @@ Content-Type: application/json
       "deviceId": "ws63-car-001",
       "temperature": 28.6,
       "humidity": 63.0,
-      "lightness": 2466,
+      "lightness": 246,
       "gear": "M",
       "direction": "forward",
       "status": "moving"
@@ -169,44 +135,74 @@ Content-Type: application/json
 }
 ```
 
-注意：
+也兼容当前小车原始 JSON：
 
-- `batchId` 用于云端去重，建议格式为 `<baseStationId>-<sequence>`。
-- `temperature/humidity/lightness` 使用真实单位，不要上传小车内部的 x10 编码。
-- `cachedCount` 是基站弱网缓存条数，Web 总览页会展示。
-- `rssi` 是小车到基站 SLE 链路 RSSI，低于 `-75 dBm` 时 Agent 会提示风险。
+```json
+{
+  "seq": 42,
+  "temp_x10": 253,
+  "humi_x10": 618,
+  "light_x10": 845,
+  "temp_alert": 0,
+  "humi_alert": 0,
+  "light_alert": 0,
+  "motion": 1,
+  "patrol": 0,
+  "err": 0
+}
+```
 
-## 本地 SoftAP 兼容
+云端会把原始 JSON 归一化为：
 
-Web/APK 本地模式默认访问：`http://192.168.5.1:8080`。
+- `temp_x10 / 10 -> temperature`
+- `humi_x10 / 10 -> humidity`
+- `light_x10 / 10 -> lightness`
+- `motion`: `0 stop`, `1 forward`, `2 backward`, `3 left`, `4 right`
+- `patrol=1 -> gear=AUTO`
+- `err != 0 -> status=fault`
 
-前端会优先发送新 JSON：
+上传接口：
+
+```http
+POST /api/ingest/base-stations/sle-base-001/telemetry
+X-Device-Key: <DEVICE_INGEST_KEY>
+Content-Type: application/json
+```
+
+## 未来差速摇杆扩展
+
+如果后续要让小车支持更细的转向幅度，建议新增 JSON 协议，而不是使用旧的 `DRIVE:` 文本：
 
 ```json
 {"cmd":"drive","left":70,"right":0,"duration_ms":350}
 ```
 
-如果小车当前固件不支持，会降级发送旧 JSON：
+固件侧建议：
 
-```json
-{"cmd":"right","speed":50,"duration_ms":350}
-```
+1. 在 `control_command_parse()` 里优先识别 `cmd=drive`。
+2. `left/right` 范围限制为 `-100..100`。
+3. `duration_ms` 限制为 `0..3000`。
+4. 新增电机层接口，例如 `car_motor_drive(left_percent, right_percent, duration_ms)`。
+5. 低占空比补偿放在电机层，不要改云端协议。
+6. 保留超时停车保护。
 
-Android APK 已允许访问 `http://192.168.5.1` 明文 HTTP。云端 API 仍使用 HTTPS。
+软件侧已经保留 `left/right/durationMs` 输入字段，等小车支持 `cmd=drive` 后，只需要把后端 `toCarControlPayload()` 切换到直接输出 drive JSON。
 
 ## 固件侧验收建议
 
-1. 小车离地测试电机方向，确认 `DRIVE:70:70:350` 是前进。
-2. 测试 `DRIVE:70:-70:350` 和 `DRIVE:-70:70:350` 是否分别原地左右转。
-3. 测试 `STOP:0` 和命令超时保护是否能停车。
-4. 基站轮询云端命令，确认能收到 `DRIVE` payload。
-5. 基站回执 `executed`，Web/APK 命令历史应从 `pulled` 变为 `executed`。
-6. 基站上传 telemetry，Web/APK 总览页应更新温湿度、光照曲线和 RSSI。
+1. 基站轮询云端命令，确认收到的 `payload` 是 JSON 字符串。
+2. 基站把 `payload` 原样通过 SLE 发给小车。
+3. 小车串口确认收到 `forward/left/right/stop` JSON 并执行。
+4. APK 摇杆按住时，小车持续动作；松手后小车停止。
+5. 基站回执 `executed` 后，APK/Web 命令历史从 `pulled` 变为 `executed`。
+6. 基站上传 telemetry 后，APK 总览页温湿度、光照和 RSSI 曲线更新。
 
 ## 相关文件
 
-- 软件侧正式 API 文档：`deploy/base-station-api.md`
-- Web/APK 控制协议：`apps/web/src/carProtocol.ts`
-- 云端命令队列：`apps/server/src/db.ts`
-- 云端命令 API：`apps/server/src/http.ts`
-- 小车当前参考代码：`src/application/samples/Farsight/ws63e_env_patrol_car`
+- 小车控制协议实现参考：`src/application/samples/Farsight/ws63e_env_patrol_car/comm/control_command.c`
+- 小车 telemetry 实现参考：`src/application/samples/Farsight/ws63e_env_patrol_car/comm/telemetry.c`
+- 小车 HTTP fallback：`src/application/samples/Farsight/ws63e_env_patrol_car/comm/wifi_ap.c`
+- 基站 UDP/SLE 网关参考：`vendor/BearPi-Pico_H3863/products/ws63e_env_gateway`
+- 后端命令 payload：`apps/server/src/domain.ts`
+- 后端命令队列：`apps/server/src/db.ts`
+- APK/Web 协议映射：`apps/web/src/carProtocol.ts`

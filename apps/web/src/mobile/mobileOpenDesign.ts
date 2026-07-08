@@ -116,6 +116,8 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
   const HOST = "ws63-mobile-host";
   let lastDriveAt = 0;
   let currentSpeed = 0.8;
+  let driveTimer = 0;
+  let latestDrivePayload = null;
 
   function send(type, payload) {
     window.parent.postMessage({ source: SOURCE, type, ...(payload || {}) }, "*");
@@ -130,6 +132,21 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const nodes = Array.from(document.querySelectorAll(".metric-value, .stat-value, .ov-value, .panel-value"));
     const target = nodes.find((node) => node.textContent && node.textContent.includes(label));
     if (target && value !== undefined && value !== null) target.textContent = String(value);
+  }
+
+  function setMetric(index, value) {
+    const node = document.querySelectorAll(".ov-data-value")[index];
+    if (node && value !== undefined && value !== null) node.textContent = String(value);
+  }
+
+  function updateChart(canvasId, values) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !window.Chart || !Array.isArray(values)) return;
+    const chart = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
+    if (!chart || !chart.data || !chart.data.datasets || !chart.data.datasets[0]) return;
+    chart.data.labels = values.map((_, index) => String(index + 1));
+    chart.data.datasets[0].data = values;
+    chart.update("none");
   }
 
   function setActiveView(target) {
@@ -155,9 +172,6 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
   function emitDriveFromPointer(event, force) {
     const base = document.getElementById("joystick-base");
     if (!base) return;
-    const now = Date.now();
-    if (!force && now - lastDriveAt < 180) return;
-    lastDriveAt = now;
     const rect = base.getBoundingClientRect();
     const point = event.touches ? event.touches[0] : event;
     if (!point) return;
@@ -169,22 +183,56 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const left = Math.max(-100, Math.min(100, Math.round((y + x) * 70)));
     const right = Math.max(-100, Math.min(100, Math.round((y - x) * 70)));
     if (Math.hypot(x, y) < 0.16) {
-      send("stop");
+      stopDrive();
       return;
     }
-    send("drive", { left, right, speed: readSpeed(), durationMs: 350 });
+    startDrive({ left, right, speed: readSpeed(), durationMs: 350 }, force);
+  }
+
+  function repeatDrive(force) {
+    if (!latestDrivePayload) return;
+    const now = Date.now();
+    if (!force && now - lastDriveAt < 280) return;
+    lastDriveAt = now;
+    send("drive", latestDrivePayload);
+  }
+
+  function startDrive(payload, force) {
+    latestDrivePayload = payload;
+    repeatDrive(Boolean(force));
+    if (!driveTimer) {
+      driveTimer = window.setInterval(() => repeatDrive(false), 300);
+    }
+  }
+
+  function stopDrive() {
+    latestDrivePayload = null;
+    if (driveTimer) {
+      window.clearInterval(driveTimer);
+      driveTimer = 0;
+    }
+    send("stop");
   }
 
   function attachControlBridge() {
     const joystickBase = document.getElementById("joystick-base");
     if (joystickBase) {
+      joystickBase.addEventListener("mousedown", (event) => emitDriveFromPointer(event, true));
       joystickBase.addEventListener("mousemove", (event) => emitDriveFromPointer(event, false));
+      joystickBase.addEventListener("touchstart", (event) => emitDriveFromPointer(event, true), { passive: true });
       joystickBase.addEventListener("touchmove", (event) => emitDriveFromPointer(event, false), { passive: true });
-      joystickBase.addEventListener("mouseup", () => send("stop"));
-      joystickBase.addEventListener("touchend", () => send("stop"));
+      window.addEventListener("mouseup", stopDrive);
+      window.addEventListener("touchend", stopDrive);
+      window.addEventListener("blur", stopDrive);
     }
     document.getElementById("speed-slider")?.addEventListener("touchend", readSpeed);
     document.getElementById("speed-slider")?.addEventListener("mouseup", readSpeed);
+    document.querySelector(".btn-primary")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      send("create-patrol", { template: "standard" });
+    }, true);
+    document.querySelector(".agent-card")?.addEventListener("click", () => send("refresh-agent"));
   }
 
   function applySnapshot(snapshot) {
@@ -194,6 +242,23 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     patchByText("°C", snapshot.temperatureLabel);
     patchByText("%RH", snapshot.humidityLabel);
     patchByText("lx", snapshot.lightnessLabel);
+    setMetric(0, snapshot.rssiLabel);
+    setMetric(1, snapshot.temperatureLabel);
+    setMetric(2, snapshot.humidityLabel);
+    setMetric(3, snapshot.lightnessLabel);
+    const statusValues = document.querySelectorAll(".status-val");
+    if (statusValues[0]) statusValues[0].textContent = snapshot.deviceName;
+    if (statusValues[1]) statusValues[1].textContent = snapshot.baseStationName + " " + snapshot.baseStationStatus;
+    if (statusValues[2]) statusValues[2].textContent = snapshot.rssiLabel;
+    const agentDesc = document.querySelector(".agent-desc");
+    if (agentDesc) agentDesc.textContent = snapshot.agentSummary;
+    updateChart("ov-chart-signal", snapshot.series.rssi);
+    updateChart("ov-chart-temp", snapshot.series.temperature);
+    updateChart("ov-chart-humid", snapshot.series.humidity);
+    updateChart("ov-chart-light", snapshot.series.lightness);
+    updateChart("dt-chart-temp", snapshot.series.temperature);
+    updateChart("dt-chart-humid", snapshot.series.humidity);
+    updateChart("dt-chart-light", snapshot.series.lightness);
     window.__ws63MobileSnapshot = snapshot;
   }
 

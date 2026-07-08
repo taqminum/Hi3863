@@ -136,6 +136,27 @@ export function buildDrivePayload(output: WheelOutput, durationMs: number): Driv
   };
 }
 
+export function wheelOutputToLegacyCommand(output: WheelOutput): CarCommand {
+  const left = Math.round(clamp(output.left, -100, 100));
+  const right = Math.round(clamp(output.right, -100, 100));
+  if (left === 0 && right === 0) return "stop";
+  const average = (left + right) / 2;
+  const difference = left - right;
+  if (Math.abs(average) >= Math.abs(difference) * 0.75) {
+    return average >= 0 ? "forward" : "backward";
+  }
+  return difference > 0 ? "right" : "left";
+}
+
+export function wheelOutputSpeed(output: WheelOutput): number {
+  const speed = Math.max(Math.abs(output.left), Math.abs(output.right));
+  return speed === 0 ? 0 : clamp(speed, MIN_EFFECTIVE_PERCENT, 100);
+}
+
+export function buildCompatPayloadFromWheels(output: WheelOutput, durationMs: number): CompatControlPayload {
+  return buildCompatControlPayload(wheelOutputToLegacyCommand(output), wheelOutputSpeed(output), durationMs);
+}
+
 export function buildCloudControlBody(deviceId: string, baseStationId: string, output: WheelOutput, durationMs: number): CloudControlBody {
   const left = Math.round(clamp(output.left, -100, 100));
   const right = Math.round(clamp(output.right, -100, 100));

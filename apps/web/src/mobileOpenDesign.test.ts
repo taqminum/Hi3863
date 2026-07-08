@@ -11,6 +11,14 @@ test("injects mobile landscape patch without removing Open Design chart function
   assert.match(result, /window\.closeChartModal/);
 });
 
+test("injects real interaction bridge for joystick repeat, task creation and charts", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /setInterval\(\(\) => repeatDrive\(false\), 300\)/);
+  assert.match(result, /send\("create-patrol", \{ template: "standard" \}\)/);
+  assert.match(result, /updateChart\("ov-chart-temp", snapshot\.series\.temperature\)/);
+  assert.match(result, /window\.Chart\.getChart/);
+});
+
 test("locks control view scrolling through active view CSS", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
   assert.match(result, /body\[data-active-view="view-control"\] \.content-area/);

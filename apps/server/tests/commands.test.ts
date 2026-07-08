@@ -19,13 +19,17 @@ test("base station pull leases pending commands", async () => {
     assert.equal(pending.status, 200);
     const pendingBody = await pending.json() as { commands: Array<{ id: string; status: string; payload: string }> };
     assert.equal(pendingBody.commands[0].status, "pulled");
-    assert.equal(pendingBody.commands[0].payload, "FORWARD:60");
+    assert.deepEqual(JSON.parse(pendingBody.commands[0].payload), {
+      cmd: "forward",
+      speed: 60,
+      duration_ms: 350
+    });
   } finally {
     await app.close();
   }
 });
 
-test("joystick drive command keeps differential wheel payload", async () => {
+test("joystick drive command is downgraded to current car motion payload", async () => {
   const app = await createTestApp();
   try {
     const token = await app.login("operator", "operator123");
@@ -50,7 +54,11 @@ test("joystick drive command keeps differential wheel payload", async () => {
     const pendingBody = await pending.json() as { commands: Array<{ action: string; speed: number; payload: string }> };
     assert.equal(pendingBody.commands[0].action, "drive");
     assert.equal(pendingBody.commands[0].speed, 0);
-    assert.equal(pendingBody.commands[0].payload, "DRIVE:70:0:350");
+    assert.deepEqual(JSON.parse(pendingBody.commands[0].payload), {
+      cmd: "right",
+      speed: 70,
+      duration_ms: 350
+    });
   } finally {
     await app.close();
   }
@@ -92,7 +100,9 @@ test("new drive command cancels stale pending drive command for same device", as
     });
     assert.equal(pending.status, 200);
     const body = await pending.json() as { commands: Array<{ payload: string }> };
-    assert.deepEqual(body.commands.map((command) => command.payload), ["DRIVE:60:60:350"]);
+    assert.deepEqual(body.commands.map((command) => JSON.parse(command.payload)), [
+      { cmd: "forward", speed: 60, duration_ms: 350 }
+    ]);
   } finally {
     await app.close();
   }
@@ -119,7 +129,9 @@ test("stop command suppresses stale pending drive commands", async () => {
       headers: { "X-Device-Key": app.deviceKey }
     });
     const body = await pending.json() as { commands: Array<{ payload: string }> };
-    assert.deepEqual(body.commands.map((command) => command.payload), ["STOP:0"]);
+    assert.deepEqual(body.commands.map((command) => JSON.parse(command.payload)), [
+      { cmd: "stop", speed: 0, duration_ms: 0 }
+    ]);
   } finally {
     await app.close();
   }

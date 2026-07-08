@@ -13,7 +13,7 @@ import {
   type User
 } from "../api";
 import type { ConnectionMode } from "../App";
-import { buildDrivePayload, localTelemetryToReading, type LocalTelemetrySample } from "../carProtocol";
+import { buildCompatPayloadFromWheels, localTelemetryToReading, type LocalTelemetrySample } from "../carProtocol";
 import { localCarApi } from "../localCarApi";
 import { Login } from "../views/Login";
 import prototypeHtml from "../open-design/ws63e-inspection-app-full-8.html?raw";
@@ -188,7 +188,7 @@ export function MobileConsoleApp() {
     await guarded(async () => {
       if (message.type === "drive") {
         if (connectionMode === "local") {
-          await localCarApi.send(buildDrivePayload({ left: message.left, right: message.right }, message.durationMs));
+          await localCarApi.send(buildCompatPayloadFromWheels({ left: message.left, right: message.right }, message.durationMs));
         } else {
           await api.command(token, {
             deviceId: selectedDevice.id,
@@ -216,14 +216,19 @@ export function MobileConsoleApp() {
         return;
       }
       if (message.type === "create-patrol") {
+        if (connectionMode === "local") {
+          await localCarApi.send({ cmd: "auto_start" });
+          setNotice("已向本地小车发送自动巡检启动指令");
+          return;
+        }
         await api.createPatrol(token, {
           deviceId: selectedDevice.id,
           baseStationId: selectedDevice.base_station_id,
           name: "APK 标准巡检",
           steps: [
-            { action: "drive", left: 50, right: 50, durationMs: 1200 },
-            { action: "drive", left: 35, right: -35, durationMs: 500 },
-            { action: "drive", left: 45, right: 45, durationMs: 1000 },
+            { action: "forward", speed: 50, durationMs: 1200 },
+            { action: "left", speed: 40, durationMs: 500 },
+            { action: "forward", speed: 45, durationMs: 1000 },
             { action: "stop", durationMs: 0 }
           ]
         });
