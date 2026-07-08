@@ -285,11 +285,44 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     if (node && value !== undefined && value !== null) node.textContent = String(value);
   }
 
+  function setDataMetric(cardClass, value) {
+    const text = String(value || "--");
+    const number = text.match(/-?\\d+(?:\\.\\d+)?/)?.[0] || "--";
+    const node = document.querySelector("." + cardClass + " .m-val");
+    if (node) node.textContent = number;
+  }
+
+  function drawFallbackLine(canvas, values) {
+    const ctx = canvas.getContext && canvas.getContext("2d");
+    if (!ctx || !Array.isArray(values) || values.length === 0) return;
+    const width = canvas.width || canvas.clientWidth || 160;
+    const height = canvas.height || canvas.clientHeight || 48;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    ctx.clearRect(0, 0, width, height);
+    ctx.beginPath();
+    values.forEach((value, index) => {
+      const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+      const y = height - ((value - min) / span) * (height - 8) - 4;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = canvas.id.includes("light") ? "#FFC107" : "#00E6A8";
+    ctx.stroke();
+  }
+
   function updateChart(canvasId, values) {
     const canvas = document.getElementById(canvasId);
-    if (!canvas || !window.Chart || !Array.isArray(values)) return;
-    const chart = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
-    if (!chart || !chart.data || !chart.data.datasets || !chart.data.datasets[0]) return;
+    if (!canvas || !Array.isArray(values)) return;
+    const chart = window.Chart?.getChart ? window.Chart.getChart(canvas) : null;
+    if (!chart || !chart.data || !chart.data.datasets || !chart.data.datasets[0]) {
+      drawFallbackLine(canvas, values);
+      return;
+    }
     chart.data.labels = values.map((_, index) => String(index + 1));
     chart.data.datasets[0].data = values;
     chart.update("none");
@@ -392,6 +425,9 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     setMetric(1, snapshot.temperatureLabel);
     setMetric(2, snapshot.humidityLabel);
     setMetric(3, snapshot.lightnessLabel);
+    setDataMetric("m-temp", snapshot.temperatureLabel);
+    setDataMetric("m-humid", snapshot.humidityLabel);
+    setDataMetric("m-light", snapshot.lightnessLabel);
     const statusValues = document.querySelectorAll(".status-val");
     if (statusValues[0]) statusValues[0].textContent = snapshot.deviceName;
     if (statusValues[1]) statusValues[1].textContent = snapshot.baseStationName + " " + snapshot.baseStationStatus;
