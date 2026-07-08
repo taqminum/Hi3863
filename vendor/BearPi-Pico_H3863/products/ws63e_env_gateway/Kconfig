@@ -5,3 +5,17 @@
 
 comment "BearPi-Pico H3863 Wi-Fi + SLE gateway"
     depends on SAMPLE_SUPPORT_WS63E_ENV_GATEWAY
+
+config WS63E_ENV_GATEWAY_ROUTER_SSID
+    string "Router Wi-Fi SSID for STA mode"
+    default "SugarLab"
+    depends on SAMPLE_SUPPORT_WS63E_ENV_GATEWAY
+    help
+        Router Wi-Fi SSID used by the gateway before falling back to SoftAP.
+
+config WS63E_ENV_GATEWAY_ROUTER_PASSWORD
+    string "Router Wi-Fi password for STA mode"
+    default "wifia302"
+    depends on SAMPLE_SUPPORT_WS63E_ENV_GATEWAY
+    help
+        Router Wi-Fi password used by the gateway before falling back to SoftAP.
