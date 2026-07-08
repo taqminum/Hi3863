@@ -17,6 +17,14 @@ test("locks control view scrolling through active view CSS", () => {
   assert.match(result, /overflow: hidden !important/);
 });
 
+test("reserves permanent right system area and moves speed value upward", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /--ws63-system-right-reserve: max\(96px, env\(safe-area-inset-right\)\)/);
+  assert.match(result, /width: calc\(100vw - var\(--ws63-system-right-reserve\)\) !important/);
+  assert.match(result, /body\[data-active-view="view-control"\] \.speed-value-display/);
+  assert.match(result, /transform: translateY\(-12px\)/);
+});
+
 test("builds readable fallback snapshot when telemetry is empty", () => {
   const user: User = { id: "u1", username: "admin", displayName: "管理员", role: "admin" };
   const selectedDevice: DeviceRecord = {

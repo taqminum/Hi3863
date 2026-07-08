@@ -74,9 +74,13 @@ html, body {
 }
 body {
   background: #000;
+  --ws63-system-right-reserve: max(96px, env(safe-area-inset-right));
+  justify-content: flex-start !important;
+  align-items: stretch !important;
+  padding-right: var(--ws63-system-right-reserve) !important;
 }
 .device-container {
-  width: 100vw !important;
+  width: calc(100vw - var(--ws63-system-right-reserve)) !important;
   height: 100dvh !important;
   max-width: none !important;
   max-height: none !important;
@@ -100,6 +104,9 @@ body[data-active-view="view-control"] .content-area {
 body[data-active-view="view-control"] #view-control {
   height: 100% !important;
   overflow: hidden !important;
+}
+body[data-active-view="view-control"] .speed-value-display {
+  transform: translateY(-12px);
 }
 </style>`;
 
