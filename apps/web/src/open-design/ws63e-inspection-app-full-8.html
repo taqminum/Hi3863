@@ -1,0 +1,952 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>WS63E 环境巡检平台 - 完整控制台</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+    :root {
+      /* Dark Palette (Default) */
+      --bg-app: #0D1013;
+      --bg-surface: #161A1F;
+      --bg-surface-elevated: #1F242B;
+      --nav-bg: rgba(18, 20, 24, 0.9);
+      --header-bg: rgba(255, 255, 255, 0.02);
+      
+      --fg-primary: #F0F4F8;
+      --fg-secondary: #8E9BAE;
+      --fg-tertiary: #5C6775;
+      
+      --border-color: #2A313C;
+      --border-highlight: rgba(255, 255, 255, 0.05);
+      
+      /* Status Colors */
+      --color-cyan: #00E6A8;
+      --color-cyan-glow: rgba(0, 230, 168, 0.2);
+      --color-amber: #FFB020;
+      --color-red: #FF4D4F;
+      --color-red-glow: rgba(255, 77, 79, 0.2);
+      --color-orange: #FF9800;
+      --color-cyan-blue: #00BCD4;
+      --color-gold: #FFC107;
+      
+      --hover-bg: #242A33;
+      
+      --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    body.light-theme {
+      /* Light Palette */
+      --bg-app: #E2E8F0;
+      --bg-surface: #FFFFFF;
+      --bg-surface-elevated: #F8FAFC;
+      --nav-bg: rgba(255, 255, 255, 0.9);
+      --header-bg: rgba(0, 0, 0, 0.03);
+      
+      --fg-primary: #0F172A;
+      --fg-secondary: #475569;
+      --fg-tertiary: #94A3B8;
+      
+      --border-color: #CBD5E1;
+      --border-highlight: rgba(0, 0, 0, 0.04);
+      
+      --color-cyan: #0F766E;
+      --color-cyan-glow: rgba(15, 118, 110, 0.15);
+      --color-amber: #D97706;
+      --color-red: #DC2626;
+      --color-red-glow: rgba(220, 38, 38, 0.15);
+      
+      --hover-bg: #F1F5F9;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      background-color: #000; display: flex; justify-content: center; align-items: center;
+      height: 100vh; font-family: var(--font-ui); color: var(--fg-primary); overflow: hidden; touch-action: none;
+      transition: background-color 0.3s ease;
+    }
+
+    /* Base Container */
+    .device-container {
+      width: 900px; height: 412px; background-color: var(--bg-app); position: relative;
+      display: flex; flex-direction: row; box-shadow: 0 0 0 2px #333, 0 24px 48px rgba(0,0,0,0.8);
+      border-radius: 32px; overflow: hidden; transition: background-color 0.3s ease;
+    }
+    .main-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+
+    /* Top Bar */
+    .top-bar { height: 56px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 24px; border-bottom: 1px solid var(--border-color); transition: border-color 0.3s; }
+    .top-bar-left { display: flex; align-items: center; gap: 16px; }
+    h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.5px; }
+    .cloud-status { display: flex; align-items: center; gap: 6px; font-size: 11px; font-family: var(--font-mono); color: var(--color-cyan); background: rgba(0, 230, 168, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 230, 168, 0.2); }
+    body.light-theme .cloud-status { background: rgba(15, 118, 110, 0.1); border-color: rgba(15, 118, 110, 0.2); }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background-color: var(--color-cyan); box-shadow: 0 0 6px var(--color-cyan); animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 230, 168, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(0, 230, 168, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 230, 168, 0); } }
+    
+    .sys-status { display: flex; gap: 12px; font-size: 12px; color: var(--fg-secondary); align-items: center; }
+    .theme-btn { background: transparent; border: none; color: var(--fg-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 6px; transition: all 0.2s; }
+    .theme-btn:hover { color: var(--fg-primary); background: var(--border-highlight); }
+
+    /* Side Nav */
+    .side-nav { width: 80px; height: 100%; flex-shrink: 0; background: var(--nav-bg); backdrop-filter: blur(12px); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; padding: 32px 0; gap: 32px; z-index: 100; transition: background-color 0.3s, border-color 0.3s; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--fg-secondary); cursor: pointer; transition: color 0.2s; }
+    .nav-item i { width: 24px; height: 24px; }
+    .nav-item span { font-size: 10px; font-weight: 500; }
+    .nav-item.active { color: var(--color-cyan); }
+
+    /* Content Area */
+    .content-area { flex: 1; position: relative; overflow-y: auto; scrollbar-width: none; }
+    .content-area::-webkit-scrollbar { display: none; }
+    .view-section { display: none; height: 100%; padding: 16px 20px; animation: fadeIn 0.3s ease; }
+    .view-section.active { display: block; }
+    
+    .badge { font-size: 9px; padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono); font-weight: 700; text-transform: uppercase; }
+    .badge.online { background: rgba(0,230,168,0.15); color: var(--color-cyan); border: 1px solid rgba(0,230,168,0.3); }
+    body.light-theme .badge.online { background: rgba(15, 118, 110, 0.1); border-color: rgba(15, 118, 110, 0.2); }
+
+    /* Header Interactive Icons */
+    .header-icon-btn { cursor: pointer; transition: color 0.2s, transform 0.2s; outline: none; }
+    .header-icon-btn:hover { color: var(--color-cyan); transform: scale(1.15); }
+    .header-icon-btn:active { transform: scale(0.95); }
+
+    /* =========================================
+       VIEW 1: OVERVIEW
+       ========================================= */
+    .dash-top-row { display: flex; gap: 16px; margin-bottom: 12px; }
+    .topology-card { flex: 1; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 16px; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+    .node { display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 2; }
+    .node-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--bg-surface-elevated); display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color); color: var(--fg-secondary); }
+    .node.active .node-icon { color: var(--color-cyan); border-color: var(--color-cyan-glow); }
+    .node-label { font-size: 11px; color: var(--fg-secondary); font-weight: 500;}
+    .link-line { flex: 1; height: 2px; background: var(--border-color); position: relative; margin: 0 -10px; top: -10px; }
+    .link-active { background: var(--color-cyan); box-shadow: 0 0 4px var(--color-cyan); }
+    .link-warning { background: var(--color-amber); border-style: dashed; }
+    .link-label { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; font-family: var(--font-mono); color: var(--fg-secondary); background: var(--bg-surface); padding: 0 4px; }
+    .risk-card { flex: 1; background: var(--bg-surface); border-left: 3px solid var(--color-amber); border-radius: 12px; padding: 12px 16px; display: flex; gap: 12px; align-items: flex-start; }
+    .risk-content h4 { font-size: 13px; margin-bottom: 4px; }
+    .risk-content p { font-size: 11px; color: var(--fg-secondary); line-height: 1.4; margin-bottom: 4px;}
+    
+    .data-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; height: 180px; }
+    .ov-data-card { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; cursor: pointer; transition: all 0.2s ease; position: relative; }
+    .ov-data-card:hover { border-color: var(--color-cyan); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+    .ov-data-card::after { content: '点击展开详细分析'; position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--color-cyan); opacity: 0; transition: opacity 0.2s; white-space: nowrap; pointer-events: none; }
+    .ov-data-card:hover::after { opacity: 1; }
+    .data-top-row-card { display: flex; justify-content: space-between; align-items: flex-start; }
+    .ov-data-header { display: flex; flex-direction: column; gap: 4px; }
+    .ov-data-label { font-size: 12px; font-weight: 500; color: var(--fg-secondary); white-space: nowrap; }
+    .ov-data-value { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--fg-primary); text-align: right; }
+    .ov-data-unit { font-size: 11px; color: var(--fg-secondary); font-weight: 400;}
+    .ov-chart-container { position: relative; height: 75px; width: 100%; margin-top: 8px; }
+    .ov-data-card.highlight .ov-data-value, .ov-data-card.highlight .ov-data-header i { color: var(--color-cyan); }
+    .ov-data-card.warning { border-color: var(--color-amber); background: rgba(255, 176, 32, 0.05); }
+    .ov-data-card.warning .ov-data-value, .ov-data-card.warning .ov-data-header i { color: var(--color-amber); }
+
+    /* Modal */
+    .modal-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+    body.light-theme .modal-overlay { background: rgba(255, 255, 255, 0.6); }
+    .modal-overlay.active { opacity: 1; pointer-events: auto; }
+    .modal-container { width: 760px; height: 350px; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 20px; display: flex; flex-direction: column; box-shadow: 0 24px 48px rgba(0,0,0,0.5); transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .modal-overlay.active .modal-container { transform: scale(1); }
+    .modal-header { padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); background: var(--header-bg); border-radius: 20px 20px 0 0; }
+    .modal-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px;}
+    .modal-subtitle { font-size: 12px; font-family: var(--font-mono); color: var(--fg-secondary); font-weight: normal;}
+    .modal-close { cursor: pointer; color: var(--fg-secondary); transition: color 0.2s; padding: 4px;}
+    .modal-close:hover { color: var(--color-red); }
+    .modal-body { flex: 1; padding: 20px 24px; position: relative; min-height: 0; }
+    .detailed-chart-container { position: relative; width: 100%; height: 100%; }
+
+    /* =========================================
+       VIEW 2: CONTROL
+       ========================================= */
+    .control-layout { display: grid; grid-template-columns: 200px 1fr 160px; gap: 20px; height: 100%; }
+    .joystick-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(22, 26, 31, 0.5); border-radius: 20px; border: 1px solid var(--border-highlight); }
+    body.light-theme .joystick-panel { background: rgba(241, 245, 249, 0.5); }
+    .joystick-base { width: 140px; height: 140px; border-radius: 50%; background: var(--bg-surface); border: 2px solid var(--border-color); box-shadow: inset 0 8px 16px rgba(0,0,0,0.6), 0 2px 4px rgba(255,255,255,0.02); position: relative; display: flex; align-items: center; justify-content: center; }
+    body.light-theme .joystick-base { box-shadow: inset 0 8px 16px rgba(0,0,0,0.05); }
+    .joystick-base::before, .joystick-base::after { content: ''; position: absolute; background: var(--border-highlight); }
+    .joystick-base::before { width: 100%; height: 2px; }
+    .joystick-base::after { width: 2px; height: 100%; }
+    .joystick-knob { width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #2A313C 0%, #161A1F 100%); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 16px rgba(0,0,0,0.8), inset 0 2px 2px rgba(255,255,255,0.1); position: absolute; z-index: 2; display: flex; align-items: center; justify-content: center; }
+    body.light-theme .joystick-knob { background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%); border-color: #CBD5E1; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+    .joystick-knob::after { content: ''; width: 14px; height: 14px; border-radius: 50%; background: var(--color-cyan); box-shadow: 0 0 8px var(--color-cyan); opacity: 0.8; }
+    .joystick-knob.active { box-shadow: 0 12px 24px rgba(0,0,0,0.9), inset 0 2px 2px rgba(255,255,255,0.1), 0 0 16px var(--color-cyan-glow); }
+    
+    .center-console { display: flex; flex-direction: column; gap: 16px; }
+    .camera-feed { flex: 1; background: #000; border-radius: 16px; border: 1px solid var(--border-color); position: relative; display: flex; flex-direction: column; justify-content: space-between; padding: 12px; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
+    .camera-badge { align-self: flex-start; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 8px; font-size: 11px; font-family: var(--font-mono); color: var(--color-cyan); border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 6px; }
+    .camera-hud { align-self: center; color: rgba(255,255,255,0.15); margin-top: -10px; }
+    .camera-overlay { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: #8E9BAE; }
+    .command-log { height: 90px; font-family: var(--font-mono); font-size: 11px; color: var(--fg-secondary); background: var(--bg-surface); padding: 12px; border-radius: 12px; overflow-y: auto; border: 1px solid var(--border-color); box-shadow: inset 0 4px 12px rgba(0,0,0,0.1); }
+    .cmd-line { margin-bottom: 4px; display: flex; gap: 8px;}
+    .cmd-time { color: var(--fg-tertiary); min-width: 65px; }
+    
+    .speed-panel { display: flex; flex-direction: column; align-items: center; justify-content: space-between; background: rgba(22, 26, 31, 0.5); border-radius: 20px; border: 1px solid var(--border-highlight); padding: 28px 0 24px 0; }
+    body.light-theme .speed-panel { background: rgba(241, 245, 249, 0.5); }
+    .speed-value-display { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--color-cyan); margin-bottom: 0; }
+    .speed-label { font-size: 11px; color: var(--fg-secondary); margin-top: 0; }
+    
+    .v-slider-wrapper { position: relative; width: 48px; height: 180px; display: flex; justify-content: center; }
+    .v-slider-track { width: 12px; height: 100%; background: var(--bg-surface-elevated); border-radius: 6px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.8); position: relative; }
+    body.light-theme .v-slider-track { box-shadow: inset 0 2px 8px rgba(0,0,0,0.05); }
+    .v-slider-fill { position: absolute; bottom: 0; left: 0; width: 100%; height: 40%; background: linear-gradient(0deg, var(--bg-surface-elevated) 0%, var(--color-cyan) 100%); border-radius: 6px; }
+    .v-slider-thumb { width: 48px; height: 48px; background: #161A1F; border: 2px solid var(--border-color); border-radius: 12px; position: absolute; left: 0; bottom: calc(40% - 24px); box-shadow: 0 4px 12px rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; cursor: grab; }
+    body.light-theme .v-slider-thumb { background: #FFFFFF; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .v-slider-thumb::before { content: ''; width: 20px; height: 4px; border-radius: 2px; background: var(--fg-tertiary); box-shadow: 0 8px 0 var(--fg-tertiary), 0 -8px 0 var(--fg-tertiary); }
+    .v-slider-thumb:active { cursor: grabbing; border-color: var(--color-cyan); }
+
+    /* =========================================
+       VIEW 3: TASKS
+       ========================================= */
+    .tasks-layout { display: grid; grid-template-columns: 240px 1fr 230px; gap: 16px; height: 100%; }
+    
+    .task-panel { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; min-height: 0;}
+    .panel-header { padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--header-bg); font-size: 13px; font-weight: 600; color: var(--fg-primary); display: flex; align-items: center; justify-content: space-between; }
+    .panel-body { flex: 1; padding: 16px; overflow-y: auto; scrollbar-width: none; }
+    
+    .status-summary { background: var(--bg-surface-elevated); border-radius: 12px; padding: 12px; margin-bottom: 20px; border: 1px solid var(--border-highlight); }
+    .status-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .status-row:last-child { margin-bottom: 0; }
+    .status-label { font-size: 11px; color: var(--fg-secondary); display: flex; align-items: center; gap: 6px; }
+    .status-val { font-size: 11px; font-family: var(--font-mono); font-weight: 500; }
+    .status-val.online { color: var(--color-cyan); }
+    
+    .form-group { margin-bottom: 16px; }
+    .form-label { font-size: 11px; color: var(--fg-secondary); margin-bottom: 8px; display: block; }
+    .form-control { width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); color: var(--fg-primary); padding: 10px 12px; border-radius: 8px; font-size: 12px; font-family: var(--font-ui); outline: none; transition: all 0.2s; }
+    .form-control:focus { border-color: var(--color-cyan); box-shadow: 0 0 0 2px var(--color-cyan-glow); }
+    .btn-primary { width: 100%; background: linear-gradient(135deg, var(--color-cyan) 0%, #00C48F 100%); color: #FFF; text-shadow: 0 1px 2px rgba(0,0,0,0.2); border: none; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px; box-shadow: 0 4px 12px var(--color-cyan-glow); transition: all 0.2s; margin-top: 4px; }
+    .btn-primary:active { transform: scale(0.98); box-shadow: none; }
+    
+    .queue-list { display: flex; flex-direction: column; gap: 12px; }
+    .task-card { background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; position: relative; transition: all 0.2s; border-left-width: 4px; cursor: pointer; }
+    .task-card:hover { background: var(--hover-bg); }
+    .task-card.running { border-left-color: var(--color-cyan); border-color: var(--color-cyan); background: linear-gradient(90deg, rgba(0, 230, 168, 0.08) 0%, rgba(31, 36, 43, 0.0) 100%); box-shadow: 0 4px 16px rgba(0,0,0,0.1), 0 0 0 1px var(--color-cyan-glow); }
+    body.light-theme .task-card.running { background: rgba(15, 118, 110, 0.05); }
+    .task-card.pending { border-left-color: var(--fg-tertiary); }
+    .task-card.failed { border-left-color: var(--color-red); }
+    
+    .tc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .tc-title { font-size: 13px; font-weight: 600; color: var(--fg-primary); font-family: var(--font-mono); }
+    .tc-meta { font-size: 11px; color: var(--fg-secondary); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+    .tc-time { font-size: 10px; color: var(--fg-tertiary); font-family: var(--font-mono); }
+
+    .tl-header-badge { display: flex; align-items: center; gap: 6px; font-size: 10px; font-family: var(--font-mono); color: var(--color-cyan); background: rgba(0, 230, 168, 0.1); padding: 2px 8px; border-radius: 12px; border: 1px solid var(--color-cyan-glow); }
+    .timeline { position: relative; padding-left: 20px; padding-top: 4px; padding-bottom: 4px; }
+    .timeline::before { content: ''; position: absolute; left: 5px; top: 12px; bottom: 12px; width: 2px; background: var(--border-color); border-radius: 1px; }
+    .tl-item { position: relative; margin-bottom: 24px; }
+    .tl-item:last-child { margin-bottom: 0; }
+    .tl-marker { position: absolute; left: -21px; top: 0px; width: 14px; height: 14px; border-radius: 50%; background: var(--bg-surface); border: 2px solid var(--border-color); display: flex; justify-content: center; align-items: center; z-index: 2; }
+    .tl-item.done .tl-marker { background: var(--color-cyan); border-color: var(--color-cyan); }
+    .tl-item.done .tl-marker::after { content: ''; width: 6px; height: 6px; background: var(--bg-surface); border-radius: 50%; }
+    .tl-item.done .tl-title { color: var(--fg-secondary); }
+    .tl-item.active .tl-marker { border-color: var(--color-cyan); background: var(--bg-surface); box-shadow: 0 0 0 4px var(--color-cyan-glow); }
+    .tl-item.active .tl-marker::after { content: ''; width: 6px; height: 6px; background: var(--color-cyan); border-radius: 50%; }
+    .tl-item.active .tl-title { color: var(--color-cyan); font-weight: 600; }
+    .tl-content { padding-left: 12px; }
+    .tl-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;}
+    .tl-meta { font-size: 11px; font-family: var(--font-mono); color: var(--fg-tertiary); background: var(--bg-surface-elevated); padding: 4px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; }
+
+    /* =========================================
+       VIEW 4: DATA
+       ========================================= */
+    .data-dashboard { display: grid; grid-template-columns: 210px minmax(0, 1fr) 250px; gap: 16px; height: 100%; }
+    .data-col { display: flex; flex-direction: column; min-height: 0; }
+    .col-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; flex-shrink: 0; }
+    .col-title { font-size: 13px; font-weight: 600; color: var(--fg-primary); display: flex; align-items: center; gap: 6px;}
+    .col-meta { font-size: 10px; color: var(--fg-tertiary); font-family: var(--font-mono); }
+    
+    .metric-cards { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+    .metric-card { background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; flex: 1; }
+    .metric-card.m-temp { border-color: rgba(255, 152, 0, 0.4); background: rgba(255, 152, 0, 0.05); }
+    .metric-card.m-temp .m-icon, .metric-card.m-temp .m-val { color: var(--color-orange); }
+    .metric-card.m-temp .m-status { background: rgba(255, 152, 0, 0.15); color: var(--color-orange); border: 1px solid rgba(255, 152, 0, 0.3); }
+    .metric-card.m-humid .m-icon { color: var(--color-cyan-blue); }
+    .metric-card.m-humid .m-status { background: rgba(0, 188, 212, 0.1); color: var(--color-cyan-blue); border: 1px solid rgba(0, 188, 212, 0.2); }
+    .metric-card.m-light .m-icon { color: var(--color-gold); }
+    .metric-card.m-light .m-status { background: rgba(255, 193, 7, 0.1); color: var(--color-gold); border: 1px solid rgba(255, 193, 7, 0.2); }
+    .m-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .m-label { font-size: 11px; color: var(--fg-secondary); display: flex; align-items: center; gap: 4px; }
+    .m-status { font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+    .m-body { display: flex; align-items: baseline; gap: 4px; }
+    .m-val { font-size: 22px; font-weight: 700; font-family: var(--font-mono); color: var(--fg-primary); }
+    .m-unit { font-size: 11px; color: var(--fg-tertiary); font-weight: 500;}
+
+    .time-toggles { display: flex; gap: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 6px; padding: 2px; }
+    .time-btn { padding: 2px 8px; font-size: 10px; font-family: var(--font-mono); color: var(--fg-tertiary); background: transparent; border: none; border-radius: 4px; cursor: pointer; transition: 0.2s;}
+    .time-btn.active { background: var(--bg-surface-elevated); color: var(--fg-primary); }
+
+    .charts-stack { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px; }
+    
+    .chart-wrapper { 
+      flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; 
+      cursor: pointer; border-radius: 8px; transition: background 0.2s; 
+    }
+    .chart-wrapper:hover { background: rgba(255,255,255,0.02); }
+    body.light-theme .chart-wrapper:hover { background: rgba(0,0,0,0.02); }
+    
+    .chart-label { font-size: 10px; color: var(--fg-tertiary); font-family: var(--font-mono); position: absolute; top: 0; left: 4px; z-index: 10; pointer-events: none; }
+    .canvas-container { flex: 1; position: relative; min-height: 0; width: 100%; margin-top: 4px; }
+
+    .agent-panel { background: rgba(255, 176, 32, 0.05); border: 1px solid rgba(255,176,32,0.3); border-top: 3px solid var(--color-amber); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; flex-shrink: 0; }
+    .agent-header { display: flex; justify-content: space-between; align-items: center; }
+    .risk-badge { font-size: 9px; font-family: var(--font-mono); font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(255,176,32,0.2); color: var(--color-amber); border: 1px solid rgba(255,176,32,0.4); }
+    .agent-desc { font-size: 11px; color: var(--fg-secondary); line-height: 1.5; }
+    .evidence-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ev-tag { font-size: 9px; font-family: var(--font-mono); padding: 4px 6px; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--fg-primary); }
+    .ev-tag.amber { border-color: rgba(255,176,32,0.4); color: var(--color-amber); }
+    .link-status-box { flex: 1; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+    .ls-row { display: flex; justify-content: space-between; align-items: center; }
+    .ls-label { font-size: 11px; color: var(--fg-secondary); display: flex; align-items: center; gap: 6px; }
+    .ls-val { font-size: 11px; font-family: var(--font-mono); font-weight: 500; }
+    .ls-val.online { color: var(--color-cyan); }
+    .ls-val.warn { color: var(--color-amber); }
+
+    /* =========================================
+       VIEW 5: MANAGE
+       ========================================= */
+    .admin-dashboard { display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); gap: 16px; height: 100%; }
+    .admin-panel { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+    .hw-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .hw-identity { display: flex; align-items: center; gap: 10px; }
+    .hw-icon { width: 32px; height: 32px; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--fg-primary); }
+    .hw-name { font-size: 14px; font-weight: 600; font-family: var(--font-mono); }
+    .hw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .hw-item { display: flex; flex-direction: column; gap: 4px; background: var(--bg-surface-elevated); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-highlight); }
+    .hw-item-label { font-size: 10px; color: var(--fg-secondary); }
+    .hw-item-val { font-size: 11px; font-family: var(--font-mono); font-weight: 500; color: var(--fg-primary); }
+    .hw-item-val.highlight { color: var(--color-cyan); }
+    .hw-item-val.warning { color: var(--color-amber); }
+
+    .roles-container { display: flex; gap: 10px; height: 100%; }
+    
+    /* [FIX] Modified role-card padding and justification to prevent overflow */
+    .role-card { flex: 1; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; position: relative; justify-content: center; }
+    .role-card.active { border-color: var(--color-cyan); background: linear-gradient(180deg, rgba(0,230,168,0.08) 0%, rgba(31,36,43,0.0) 100%); box-shadow: inset 0 2px 0 rgba(255,255,255,0.05), 0 4px 12px rgba(0,0,0,0.1); }
+    body.light-theme .role-card.active { background: rgba(15, 118, 110, 0.05); }
+    .role-card.active::before { content: 'CURRENT'; position: absolute; top: -6px; right: 6px; background: var(--color-cyan); color: #FFF; font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 2px; font-family: var(--font-mono); }
+    /* [FIX] Adjusted role-name font and margin */
+    .role-name { font-size: 11px; font-weight: 600; font-family: var(--font-mono); color: var(--fg-primary); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;}
+    .role-card.active .role-name { color: var(--color-cyan); }
+    /* [FIX] Compressed list gaps */
+    .perm-list { display: flex; flex-direction: column; gap: 2px; }
+    .perm-item { font-size: 9px; color: var(--fg-secondary); display: flex; align-items: center; gap: 4px; }
+    .perm-item i { color: var(--fg-tertiary); width: 10px; height: 10px;}
+    .role-card.active .perm-item i { color: var(--color-cyan); opacity: 0.8; }
+
+    .audit-list { display: flex; flex-direction: column; gap: 6px; }
+    .audit-item { display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 10px; padding: 6px 10px; background: var(--bg-surface-elevated); border-radius: 6px; border-left: 2px solid var(--border-color); }
+    .audit-item:hover { background: var(--hover-bg); }
+    .audit-item.success { border-left-color: var(--color-cyan); }
+    .audit-item.warn { border-left-color: var(--color-amber); }
+    .au-time { width: 55px; color: var(--fg-tertiary); }
+    .au-user { width: 50px; color: var(--fg-primary); font-weight: 500; }
+    .au-action { flex: 1; color: var(--fg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .au-result { width: 45px; text-align: right; }
+    .au-result.success { color: var(--color-cyan); }
+
+    .panel-action {
+      font-size: 11px; color: var(--fg-secondary); cursor: pointer; display: flex; align-items: center; gap: 4px;
+      transition: all 0.2s; background: var(--bg-surface-elevated); border: 1px solid var(--border-color);
+      padding: 4px 10px; border-radius: 6px; font-weight: 500; outline: none;
+    }
+    .panel-action:hover {
+      color: var(--color-cyan); background: rgba(0, 230, 168, 0.08); border-color: rgba(0, 230, 168, 0.3);
+    }
+    body.light-theme .panel-action { background: #FFFFFF; border-color: #CBD5E1; color: #475569; }
+    body.light-theme .panel-action:hover { color: #0F766E; background: rgba(15, 118, 110, 0.05); border-color: rgba(15, 118, 110, 0.3); }
+
+  </style>
+</head>
+<body>
+
+<div class="device-container">
+  
+  <div class="main-wrapper">
+    <!-- TOP BAR -->
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <h1 data-od-id="app-title">WS63E 控制台</h1>
+        <div class="cloud-status"><div class="status-dot"></div> TCP直连</div>
+      </div>
+      <div class="sys-status">
+        <button id="theme-toggle" class="theme-btn" aria-label="切换深浅色主题">
+          <i data-lucide="sun" width="16" height="16"></i>
+        </button>
+        <span id="clock">14:30</span>
+        <i data-lucide="wifi" width="14" height="14"></i>
+        <i data-lucide="battery-medium" width="14" height="14"></i>
+      </div>
+    </div>
+
+    <!-- CONTENT AREA -->
+    <div class="content-area">
+      
+      <!-- ========================================= -->
+      <!-- VIEW 1: OVERVIEW                          -->
+      <!-- ========================================= -->
+      <div id="view-overview" class="view-section active">
+        <div class="dash-top-row">
+          <div class="topology-card">
+            <div class="node active"><div class="node-icon"><i data-lucide="smartphone"></i></div><span class="node-label">App 端</span></div>
+            <div class="link-line link-active"></div>
+            <div class="node active"><div class="node-icon"><i data-lucide="cloud"></i></div><span class="node-label">云 API</span></div>
+            <div class="link-line link-active"><span class="link-label">TCP</span></div>
+            <div class="node active"><div class="node-icon"><i data-lucide="radio-tower"></i></div><span class="node-label">H3863基站</span></div>
+            <div class="link-line link-warning"><span class="link-label">SLE弱网</span></div>
+            <div class="node active" style="border-color: var(--color-amber);"><div class="node-icon"><i data-lucide="cpu"></i></div><span class="node-label">小车节点</span></div>
+          </div>
+          <div class="risk-card">
+            <i data-lucide="alert-triangle" class="risk-icon" width="20" height="20" style="color:var(--color-amber)"></i>
+            <div class="risk-content">
+              <h4>区域 B-2 湿度持续异常</h4>
+              <p>传感器数据偏离均值，基站已启动离线缓存。</p>
+              <span style="font-size:10px; font-family:var(--font-mono); color:var(--fg-tertiary)">RISK-094</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="data-grid">
+          <div class="ov-data-card highlight" onclick="openChartModal('signal')">
+            <div class="data-top-row-card">
+              <div class="ov-data-header"><i data-lucide="activity" width="16" height="16"></i><span class="ov-data-label">SLE 信号质量</span></div>
+              <div class="ov-data-value">-68 <span class="ov-data-unit">dBm</span></div>
+            </div>
+            <div class="ov-chart-container"><canvas id="ov-chart-signal"></canvas></div>
+          </div>
+          <div class="ov-data-card" onclick="openChartModal('temp')">
+            <div class="data-top-row-card">
+              <div class="ov-data-header"><i data-lucide="thermometer" width="16" height="16"></i><span class="ov-data-label">环境温度</span></div>
+              <div class="ov-data-value">28.4 <span class="ov-data-unit">°C</span></div>
+            </div>
+            <div class="ov-chart-container"><canvas id="ov-chart-temp"></canvas></div>
+          </div>
+          <div class="ov-data-card warning" onclick="openChartModal('humid')">
+            <div class="data-top-row-card">
+              <div class="ov-data-header"><i data-lucide="droplets" width="16" height="16"></i><span class="ov-data-label">环境湿度 (预警)</span></div>
+              <div class="ov-data-value">82 <span class="ov-data-unit">%RH</span></div>
+            </div>
+            <div class="ov-chart-container"><canvas id="ov-chart-humid"></canvas></div>
+          </div>
+          <div class="ov-data-card" onclick="openChartModal('light')">
+            <div class="data-top-row-card">
+              <div class="ov-data-header"><i data-lucide="sun" width="16" height="16"></i><span class="ov-data-label">环境光照</span></div>
+              <div class="ov-data-value">1240 <span class="ov-data-unit">lx</span></div>
+            </div>
+            <div class="ov-chart-container"><canvas id="ov-chart-light"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- VIEW 2: CONTROL                           -->
+      <!-- ========================================= -->
+      <div id="view-control" class="view-section">
+        <div class="control-layout">
+          <div class="joystick-panel"><div class="joystick-base" id="joystick-base"><div class="joystick-knob" id="joystick-knob"></div></div></div>
+          <div class="center-console">
+            <div class="camera-feed">
+              <div class="camera-badge"><div class="status-dot"></div>CAM-WS-01 直播流</div>
+              <div class="camera-hud"><i data-lucide="crosshair" width="36" height="36"></i></div>
+              <div class="camera-overlay"><span>LAT: 12ms</span><span>1080P / 30FPS</span></div>
+            </div>
+            <div class="command-log" id="cmd-log">
+              <div class="cmd-line"><span class="cmd-time">[14:29:45]</span><span class="cmd-info">系统: 横屏遥控控制舱已就绪</span></div>
+              <div class="cmd-line"><span class="cmd-time">[14:30:00]</span><span class="cmd-info">提示: 拖动左侧摇杆控制方向，右侧滑块控制限速</span></div>
+            </div>
+          </div>
+          <div class="speed-panel">
+            <div class="speed-value-display" id="speed-val">0.8 <span style="font-size:12px; color:var(--fg-secondary)">m/s</span></div>
+            <div class="v-slider-wrapper" id="speed-slider">
+              <div class="v-slider-track"><div class="v-slider-fill" id="speed-fill"></div></div>
+              <div class="v-slider-thumb" id="speed-thumb"></div>
+            </div>
+            <div class="speed-label">速度限制</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- VIEW 3: TASKS                             -->
+      <!-- ========================================= -->
+      <div id="view-tasks" class="view-section">
+        <div class="tasks-layout">
+          <!-- Col 1: Create Task -->
+          <div class="task-panel">
+            <div class="panel-header"><span>新建任务</span><i data-lucide="plus-circle" width="16" height="16" class="header-icon-btn" onclick="alert('将打开高级任务路线编排器...')"></i></div>
+            <div class="panel-body">
+              <div class="status-summary">
+                <div class="status-row"><span class="status-label"><i data-lucide="cpu" width="12" height="12"></i> 目标小车</span><span class="status-val">ROVER-01</span></div>
+                <div class="status-row"><span class="status-label"><i data-lucide="radio-tower" width="12" height="12"></i> 边缘基站</span><span class="status-val online">H3863 在线</span></div>
+                <div class="status-row"><span class="status-label"><i data-lucide="activity" width="12" height="12"></i> 链路信号</span><span class="status-val">-68 dBm</span></div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">任务名称</label>
+                <input type="text" class="form-control" value="Auto-Inspect-094">
+              </div>
+              <div class="form-group">
+                <label class="form-label">预设路线模板</label>
+                <select class="form-control">
+                  <option>[B-2区] 湿度异常复核路线</option>
+                  <option>常规设备状态巡检</option>
+                  <option>外围安防绕场</option>
+                </select>
+              </div>
+              <button class="btn-primary" onclick="alert('指令已推送到云端任务队列')"><i data-lucide="send" width="16" height="16"></i> 一键下发任务</button>
+            </div>
+          </div>
+
+          <!-- Col 2: Task Queue -->
+          <div class="task-panel">
+            <div class="panel-header"><span>任务队列 (3)</span><i data-lucide="list" width="16" height="16" class="header-icon-btn" onclick="alert('正在与云端服务器同步最新任务队列状态...')"></i></div>
+            <div class="panel-body queue-list">
+              <div class="task-card running">
+                <div class="tc-header"><span class="tc-title">Auto-Inspect-093</span><span class="badge running">Running</span></div>
+                <div class="tc-meta"><i data-lucide="map-pin"></i> [B-2区] 湿度复核</div>
+                <div class="tc-time">14:28:10</div>
+              </div>
+              <div class="task-card pending">
+                <div class="tc-header"><span class="tc-title">Auto-Inspect-094</span><span class="badge pending">Pending</span></div>
+                <div class="tc-meta"><i data-lucide="map-pin"></i> 常规设备巡检</div>
+                <div class="tc-time">等待调度</div>
+              </div>
+              <div class="task-card failed">
+                <div class="tc-header"><span class="tc-title">Night-Patrol-01</span><span class="badge failed">Failed</span></div>
+                <div class="tc-meta" style="color:var(--color-red)"><i data-lucide="alert-circle"></i> Error: 传感器离线</div>
+                <div class="tc-time">02:15:00</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Col 3: Timeline -->
+          <div class="task-panel">
+            <div class="panel-header"><span>执行步骤追踪</span><div class="tl-header-badge"><div class="status-dot"></div> 实时同步</div></div>
+            <div class="panel-body">
+              <div class="timeline">
+                <div class="tl-item done">
+                  <div class="tl-marker"></div>
+                  <div class="tl-content">
+                    <div class="tl-title"><i data-lucide="power" width="14" height="14"></i> 启动系统与自检</div>
+                    <div class="tl-meta"><span>14:28:10</span> | <span>耗时 2s</span></div>
+                  </div>
+                </div>
+                <div class="tl-item done">
+                  <div class="tl-marker"></div>
+                  <div class="tl-content">
+                    <div class="tl-title"><i data-lucide="navigation" width="14" height="14"></i> 导航至 B-2 区入口</div>
+                    <div class="tl-meta"><span>1.2 m/s</span> | <span>耗时 45s</span></div>
+                  </div>
+                </div>
+                <div class="tl-item active">
+                  <div class="tl-marker"></div>
+                  <div class="tl-content">
+                    <div class="tl-title"><i data-lucide="camera" width="14" height="14"></i> 环视采图与湿度取样</div>
+                    <div class="tl-meta" style="border: 1px solid rgba(0,230,168,0.3); color: var(--color-cyan);"><span>执行中...</span> | <span>剩余 10s</span></div>
+                  </div>
+                </div>
+                <div class="tl-item">
+                  <div class="tl-marker"></div>
+                  <div class="tl-content">
+                    <div class="tl-title"><i data-lucide="corner-down-left" width="14" height="14"></i> 返航至充电基站</div>
+                    <div class="tl-meta"><span>待执行</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- VIEW 4: DATA                              -->
+      <!-- ========================================= -->
+      <div id="view-data" class="view-section">
+        <div class="data-dashboard">
+          <div class="data-col">
+            <div class="col-header"><div class="col-title"><i data-lucide="gauge" width="14" height="14"></i> 实时数据</div><div class="col-meta">ROVER-01 (2s前)</div></div>
+            <div class="metric-cards">
+              <div class="metric-card m-temp">
+                <div class="m-header"><span class="m-label"><i data-lucide="thermometer" class="m-icon" width="14" height="14"></i> 温度</span><span class="m-status">偏高</span></div>
+                <div class="m-body"><span class="m-val" style="color:var(--color-orange)">30.4</span><span class="m-unit">°C</span></div>
+              </div>
+              <div class="metric-card m-humid">
+                <div class="m-header"><span class="m-label"><i data-lucide="droplets" class="m-icon" width="14" height="14"></i> 湿度</span><span class="m-status">正常</span></div>
+                <div class="m-body"><span class="m-val" style="color:var(--fg-primary)">64.1</span><span class="m-unit">%RH</span></div>
+              </div>
+              <div class="metric-card m-light">
+                <div class="m-header"><span class="m-label"><i data-lucide="sun" class="m-icon" width="14" height="14"></i> 光照</span><span class="m-status">正常</span></div>
+                <div class="m-body"><span class="m-val" style="color:var(--fg-primary)">2958</span><span class="m-unit">lx</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="data-col">
+            <div class="col-header">
+              <div class="col-title"><i data-lucide="trending-up" width="14" height="14"></i> 历史趋势</div>
+              <div class="time-toggles" id="data-time-toggles">
+                <button class="time-btn active" data-range="1H">1H</button>
+                <button class="time-btn" data-range="24H">24H</button>
+                <button class="time-btn" data-range="7D">7D</button>
+              </div>
+            </div>
+            <div class="charts-stack">
+              <div class="chart-wrapper" onclick="openChartModal('temp')">
+                <div class="chart-label" style="color: var(--color-orange)">TEMP</div>
+                <div class="canvas-container"><canvas id="dt-chart-temp"></canvas></div>
+              </div>
+              <div class="chart-wrapper" onclick="openChartModal('humid')">
+                <div class="chart-label" style="color: var(--color-cyan-blue)">HUMID</div>
+                <div class="canvas-container"><canvas id="dt-chart-humid"></canvas></div>
+              </div>
+              <div class="chart-wrapper" onclick="openChartModal('light')">
+                <div class="chart-label" style="color: var(--color-gold)">LIGHT</div>
+                <div class="canvas-container"><canvas id="dt-chart-light"></canvas></div>
+              </div>
+            </div>
+          </div>
+          <div class="data-col">
+            <div class="col-header"><div class="col-title"><i data-lucide="sparkles" width="14" height="14"></i> 智能分析</div></div>
+            <div class="agent-panel">
+              <div class="agent-header"><div class="col-title" style="font-size:12px; gap:4px;"><i data-lucide="bot" width="14" height="14"></i> Agent 摘要</div><div class="risk-badge" style="background: rgba(255,176,32,0.2); color: var(--color-amber); border: 1px solid rgba(255,176,32,0.4);">MEDIUM 需关注</div></div>
+              <div class="agent-desc">温度持续升高，且检测到 SLE 链路信号波动。建议优先执行 B-2 区复核巡检。</div>
+              <div class="evidence-grid">
+                <span class="ev-tag amber">温度过阈值</span><span class="ev-tag amber">RSSI -76 dBm</span>
+                <span class="ev-tag">弱网缓存 3条</span><span class="ev-tag">延迟 18s</span>
+              </div>
+            </div>
+            <div class="link-status-box">
+              <div class="ls-row"><span class="ls-label"><i data-lucide="radio-tower" width="14" height="14"></i> H3863 基站</span><span class="ls-val online">在线</span></div>
+              <div class="ls-row"><span class="ls-label"><i data-lucide="cloud-sync" width="14" height="14"></i> 云端同步</span><span class="ls-val online">正常</span></div>
+              <div class="ls-row"><span class="ls-label"><i data-lucide="database" width="14" height="14"></i> 缓存积压</span><span class="ls-val warn">3 条</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- VIEW 5: MANAGE                            -->
+      <!-- ========================================= -->
+      <div id="view-manage" class="view-section">
+        <div class="admin-dashboard">
+          <div class="admin-panel">
+            <div class="panel-header"><div class="panel-title"><i data-lucide="cpu" width="14" height="14"></i> 车辆设备</div><button class="panel-action"><i data-lucide="settings-2" width="12" height="12"></i> 编排</button></div>
+            <div class="panel-body">
+              <div class="hw-head"><div class="hw-identity"><div class="hw-icon"><i data-lucide="smartphone" width="16" height="16"></i></div><div class="hw-name">ROVER-01</div></div><div class="badge online">在线</div></div>
+              <div class="hw-grid">
+                <div class="hw-item"><span class="hw-item-label">链路模式</span><span class="hw-item-val highlight">SLE (星闪)</span></div>
+                <div class="hw-item"><span class="hw-item-label">绑定网关</span><span class="hw-item-val">H3863</span></div>
+                <div class="hw-item"><span class="hw-item-label">最后活跃</span><span class="hw-item-val">2s ago</span></div>
+                <div class="hw-item"><span class="hw-item-label">设备备注</span><span class="hw-item-val" style="color:var(--fg-secondary)">巡检主车A号</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="admin-panel">
+            <div class="panel-header"><div class="panel-title"><i data-lucide="shield" width="14" height="14"></i> 权限角色</div><button class="panel-action"><i data-lucide="users" width="12" height="12"></i> 用户管理</button></div>
+            <div class="panel-body">
+              <div class="roles-container">
+                <div class="role-card active"><div class="role-name"><i data-lucide="key" width="12" height="12"></i> admin</div>
+                  <div class="perm-list"><div class="perm-item"><i data-lucide="check" width="10" height="10"></i> 设备管理</div><div class="perm-item"><i data-lucide="check" width="10" height="10"></i> 审计追踪</div><div class="perm-item"><i data-lucide="check" width="10" height="10"></i> 遥控及巡检</div></div>
+                </div>
+                <div class="role-card"><div class="role-name"><i data-lucide="user-cog" width="12" height="12"></i> operator</div>
+                  <div class="perm-list"><div class="perm-item"><i data-lucide="check" width="10" height="10"></i> 车辆遥控</div><div class="perm-item"><i data-lucide="check" width="10" height="10"></i> 创建巡检</div><div class="perm-item"><i data-lucide="x" width="10" height="10"></i> 系统设置</div></div>
+                </div>
+                <div class="role-card"><div class="role-name"><i data-lucide="eye" width="12" height="12"></i> viewer</div>
+                  <div class="perm-list"><div class="perm-item"><i data-lucide="check" width="10" height="10"></i> 数据总览</div><div class="perm-item"><i data-lucide="check" width="10" height="10"></i> Agent分析</div><div class="perm-item"><i data-lucide="x" width="10" height="10"></i> 车辆操控</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="admin-panel">
+            <div class="panel-header"><div class="panel-title"><i data-lucide="radio-tower" width="14" height="14"></i> 边缘基站</div><button class="panel-action"><i data-lucide="refresh-cw" width="12" height="12"></i> 重启</button></div>
+            <div class="panel-body">
+              <div class="hw-head"><div class="hw-identity"><div class="hw-icon"><i data-lucide="server" width="16" height="16"></i></div><div class="hw-name">H3863</div></div><div class="badge online">在线</div></div>
+              <div class="hw-grid">
+                <div class="hw-item"><span class="hw-item-label">上云状态</span><span class="hw-item-val highlight">TCP Normal</span></div>
+                <div class="hw-item"><span class="hw-item-label">离线缓存 (条)</span><span class="hw-item-val warning">3</span></div>
+                <div class="hw-item"><span class="hw-item-label">SLE RSSI</span><span class="hw-item-val">-68 dBm</span></div>
+                <div class="hw-item"><span class="hw-item-label">心跳延迟</span><span class="hw-item-val">45 ms</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="admin-panel">
+            <div class="panel-header"><div class="panel-title"><i data-lucide="history" width="14" height="14"></i> 审计追踪</div><button class="panel-action"><i data-lucide="external-link" width="12" height="12"></i> 完整记录</button></div>
+            <div class="panel-body">
+              <div class="audit-list">
+                <div class="audit-item success"><div class="au-time">14:28:10</div><div class="au-user">admin</div><div class="au-action">创建巡检 [Auto-Inspect-094]</div><div class="au-result success">OK</div></div>
+                <div class="audit-item success"><div class="au-time">14:20:05</div><div class="au-user">admin</div><div class="au-action">下发遥控指令 [Move Forward]</div><div class="au-result success">OK</div></div>
+                <div class="audit-item success"><div class="au-time">14:15:30</div><div class="au-user">system</div><div class="au-action">更新 H3863 基站路由表</div><div class="au-result success">OK</div></div>
+                <div class="audit-item warn"><div class="au-time">14:10:00</div><div class="au-user">oper_1</div><div class="au-action">尝试修改设备限制 (被拒)</div><div class="au-result">DENY</div></div>
+                <div class="audit-item success"><div class="au-time">13:50:22</div><div class="au-user">admin</div><div class="au-action">登入系统 (IP: 10.0.1.45)</div><div class="au-result success">OK</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+    </div>
+    
+    <!-- MODAL OVERLAY FOR CHARTS -->
+    <div id="chart-modal" class="modal-overlay">
+      <div class="modal-container">
+        <div class="modal-header">
+          <div class="modal-title" id="modal-title"><i data-lucide="activity" width="18" height="18"></i> 详细趋势分析 <span class="modal-subtitle" id="modal-subtitle">过去 120 分钟</span></div>
+          <div class="modal-close" onclick="closeChartModal()"><i data-lucide="x" width="20" height="20"></i></div>
+        </div>
+        <div class="modal-body"><div class="detailed-chart-container"><canvas id="detailed-chart"></canvas></div></div>
+      </div>
+    </div>
+    
+  </div>
+
+  <!-- Side Navigation (Right) -->
+  <nav class="side-nav" data-od-id="side-nav">
+    <div class="nav-item active" data-target="view-overview"><i data-lucide="layout-dashboard"></i><span>总览</span></div>
+    <div class="nav-item" data-target="view-control"><i data-lucide="gamepad-2"></i><span>遥控</span></div>
+    <div class="nav-item" data-target="view-tasks"><i data-lucide="list-checks"></i><span>巡检</span></div>
+    <div class="nav-item" data-target="view-data"><i data-lucide="database"></i><span>数据</span></div>
+    <div class="nav-item" data-target="view-manage"><i data-lucide="cpu"></i><span>管理</span></div>
+  </nav>
+
+</div>
+
+<script>
+  lucide.createIcons();
+
+  // --- Clock & Theme ---
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  const themeToggle = document.getElementById('theme-toggle');
+  let isLight = false;
+  themeToggle.addEventListener('click', () => {
+    isLight = !isLight;
+    document.body.classList.toggle('light-theme', isLight);
+    themeToggle.innerHTML = isLight ? '<i data-lucide="moon" width="16" height="16"></i>' : '<i data-lucide="sun" width="16" height="16"></i>';
+    lucide.createIcons();
+    window.dispatchEvent(new Event('resize')); 
+  });
+
+  // --- Navigation ---
+  const navItems = document.querySelectorAll('.nav-item');
+  const views = document.querySelectorAll('.view-section');
+  navItems.forEach(item => {
+    item.addEventListener('click', () => {
+      navItems.forEach(nav => nav.classList.remove('active'));
+      item.classList.add('active');
+      const targetId = item.getAttribute('data-target');
+      views.forEach(view => {
+        if(view.id === targetId) view.classList.add('active');
+        else view.classList.remove('active');
+      });
+      window.dispatchEvent(new Event('resize'));
+    });
+  });
+
+  // --- Joystick & Remote Control ---
+  function logCmd(msg, type="info") {
+    const logC = document.getElementById('cmd-log');
+    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const div = document.createElement('div'); div.className = 'cmd-line';
+    let colorStyle = 'color: var(--fg-secondary)';
+    if(type === 'stop') colorStyle = 'color: var(--color-amber)';
+    else if(type === 'move') colorStyle = 'color: var(--color-cyan)';
+    div.innerHTML = `<span class="cmd-time">[${timeStr}]</span><span class="cmd-info" style="${colorStyle}">${msg}</span>`;
+    logC.appendChild(div); logC.scrollTop = logC.scrollHeight;
+  }
+
+  const joystickBase = document.getElementById('joystick-base');
+  const joystickKnob = document.getElementById('joystick-knob');
+  let isDraggingJoy = false; let baseRect = null; let currentDir = 'Idle';
+  function handleJoyStart(e) { isDraggingJoy = true; joystickKnob.classList.add('active'); joystickKnob.style.transition = 'none'; baseRect = joystickBase.getBoundingClientRect(); handleJoyMove(e); }
+  function handleJoyMove(e) {
+    if (!isDraggingJoy) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const dx = clientX - (baseRect.left + baseRect.width / 2);
+    const dy = clientY - (baseRect.top + baseRect.height / 2);
+    let distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance > 40) { distance = 40; joystickKnob.style.transform = `translate(${(dx / Math.sqrt(dx*dx+dy*dy))*40}px, ${(dy / Math.sqrt(dx*dx+dy*dy))*40}px)`; } 
+    else joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+    if (distance > 15) { 
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI); let newDir = '';
+      if (angle > -45 && angle <= 45) newDir = '右转 (Turn Right)';
+      else if (angle > 45 && angle <= 135) newDir = '后退 (Backward)';
+      else if (angle > 135 || angle <= -135) newDir = '左转 (Turn Left)';
+      else if (angle > -135 && angle <= -45) newDir = '前进 (Forward)';
+      if (newDir !== currentDir) { currentDir = newDir; logCmd(`App->云端: ${currentDir}`, 'move'); }
+    } else if (currentDir !== 'Idle') { currentDir = 'Idle'; logCmd('App->云端: 摇杆归中自动触发停止', 'stop'); }
+  }
+  function handleJoyEnd() {
+    if(!isDraggingJoy) return; isDraggingJoy = false; joystickKnob.classList.remove('active');
+    joystickKnob.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'; joystickKnob.style.transform = `translate(0px, 0px)`;
+    if (currentDir !== 'Idle') { currentDir = 'Idle'; logCmd('App->云端: 摇杆松开 -> 停止', 'stop'); }
+  }
+  joystickBase.addEventListener('mousedown', handleJoyStart); window.addEventListener('mousemove', handleJoyMove); window.addEventListener('mouseup', handleJoyEnd);
+  joystickBase.addEventListener('touchstart', (e) => { e.preventDefault(); handleJoyStart(e); }, { passive: false }); window.addEventListener('touchmove', (e) => { if(isDraggingJoy) e.preventDefault(); handleJoyMove(e); }, { passive: false }); window.addEventListener('touchend', handleJoyEnd);
+
+  const speedSlider = document.getElementById('speed-slider'); const speedThumb = document.getElementById('speed-thumb'); const speedFill = document.getElementById('speed-fill'); const speedValDisplay = document.getElementById('speed-val');
+  let isDraggingSpeed = false; let sliderRect = null;
+  function handleSpeedStart(e) { isDraggingSpeed = true; sliderRect = speedSlider.getBoundingClientRect(); handleSpeedMove(e); }
+  function handleSpeedMove(e) {
+    if (!isDraggingSpeed) return;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const percent = Math.max(0, Math.min(100, ((sliderRect.bottom - clientY) / sliderRect.height) * 100));
+    speedFill.style.height = `${percent}%`; speedThumb.style.bottom = `calc(${percent}% - 24px)`;
+    speedValDisplay.innerHTML = `${(percent / 100 * 2.0).toFixed(1)} <span style="font-size:12px; color:var(--fg-secondary)">m/s</span>`;
+  }
+  function handleSpeedEnd() { isDraggingSpeed = false; }
+  speedSlider.addEventListener('mousedown', handleSpeedStart); window.addEventListener('mousemove', handleSpeedMove); window.addEventListener('mouseup', handleSpeedEnd);
+  speedSlider.addEventListener('touchstart', (e) => { e.preventDefault(); handleSpeedStart(e); }, { passive: false }); window.addEventListener('touchmove', (e) => { if(isDraggingSpeed) e.preventDefault(); handleSpeedMove(e); }, { passive: false }); window.addEventListener('touchend', handleSpeedEnd);
+
+  // --- Chart.js Core Settings ---
+  Chart.defaults.maintainAspectRatio = false;
+  Chart.defaults.responsive = true;
+  Chart.defaults.color = '#5C6775';
+  Chart.defaults.font.family = "'JetBrains Mono', monospace";
+
+  // Shared Data Store
+  const ovChartStore = {
+    signal: { title: 'SLE 信号质量', unit: 'dBm', icon: 'activity', type: 'bar', color: '#00E6A8', bgColor: 'rgba(0, 230, 168, 0.8)', data: [-70, -69, -68, -71, -67, -68, -69, -70, -68, -66, -67, -68, -69, -68, -68, -70, -71, -69, -68, -67, -66, -68, -67, -68], min: -100, max: -40 },
+    temp: { title: '环境温度', unit: '°C', icon: 'thermometer', type: 'line', color: '#FF9800', bgColor: 'rgba(255, 152, 0, 0.2)', data: [27.8, 27.9, 28.0, 27.9, 28.1, 28.2, 28.1, 28.3, 28.4, 28.4, 28.5, 28.4, 28.6, 28.5, 28.4, 28.5, 28.4, 28.3, 28.4, 28.4, 28.3, 28.2, 28.3, 28.4], min: 25, max: 35 },
+    humid: { title: '环境湿度', unit: '%RH', icon: 'droplets', type: 'line', color: '#FFB020', bgColor: 'rgba(255, 176, 32, 0.3)', data: [45, 46, 45, 48, 52, 58, 65, 72, 75, 78, 80, 81, 79, 82, 81, 83, 82, 84, 83, 82, 81, 80, 81, 82], min: 40, max: 90 },
+    light: { title: '环境光照', unit: 'lx', icon: 'sun', type: 'line', color: '#FFC107', bgColor: 'rgba(255, 193, 7, 0.2)', data: [1200, 1210, 1205, 1215, 1220, 1218, 1230, 1225, 1240, 1235, 1245, 1240, 1250, 1248, 1245, 1255, 1240, 1235, 1245, 1240, 1230, 1240, 1245, 1240], min: 1000, max: 1500 }
+  };
+
+  function getGradient(ctx, colorStart, h=100) { const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, colorStart); g.addColorStop(1, 'rgba(0,0,0,0)'); return g; }
+
+  // Store globally to enable updating via Time Toggles
+  const dataViewCharts = {};
+  let currentRangeLabels = [];
+
+  function generateLabels(range) {
+    if (range === '1H') return Array.from({length: 24}, (_, i) => { const d = new Date(); d.setMinutes(d.getMinutes() - (23 - i) * 5); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; });
+    if (range === '24H') return Array.from({length: 24}, (_, i) => { const d = new Date(); d.setHours(d.getHours() - (23 - i)); return `${d.getHours().toString().padStart(2,'0')}:00`; });
+    if (range === '7D') return Array.from({length: 7}, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return `${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`; });
+  }
+  function generateMockData(baseData, range, variance) {
+    if(range === '1H') return [...baseData];
+    const len = range === '7D' ? 7 : 24; const res = []; let val = baseData[0];
+    for(let i=0; i<len; i++) { val = val + (Math.random()*variance*2 - variance); res.push(val); } return res;
+  }
+
+  window.addEventListener('load', () => {
+    currentRangeLabels = generateLabels('1H');
+
+    // Overview View: Fully Interactive Sparklines
+    const ovOptions = (min, max, color) => ({
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: true, mode: 'index', intersect: false,
+          backgroundColor: 'rgba(22, 26, 31, 0.95)', titleColor: '#8E9BAE',
+          bodyColor: color, bodyFont: { size: 10, weight: 'bold' },
+          borderColor: '#2A313C', borderWidth: 1, padding: 6, displayColors: false
+        }
+      },
+      scales: { x: { display: false }, y: { display: true, position: 'right', grid: { color: 'rgba(128,128,128,0.1)', drawBorder: false }, ticks: { font: { size: 9 }, maxTicksLimit: 3 }, min: min, max: max } },
+      layout: { padding: { top: 6, bottom: 2 } },
+      elements: { point: { radius: 0 }, line: { tension: 0.4, borderWidth: 2 } },
+      animation: { duration: 0 },
+      interaction: { mode: 'nearest', axis: 'x', intersect: false }
+    });
+
+    ['signal', 'temp', 'humid', 'light'].forEach(key => {
+      const config = ovChartStore[key];
+      new Chart(document.getElementById(`ov-chart-${key}`).getContext('2d'), {
+        type: config.type,
+        data: { labels: currentRangeLabels, datasets: [{ data: config.data, borderColor: config.color, backgroundColor: config.type==='line' ? getGradient(document.getElementById(`ov-chart-${key}`).getContext('2d'), config.bgColor) : config.bgColor, borderWidth: 2, fill: true, borderRadius: config.type==='bar'?2:0, barPercentage: 0.6, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#161A1F', pointHoverBorderWidth: 2 }] },
+        options: ovOptions(config.min, config.max, config.color)
+      });
+    });
+
+    // Data View Trend Charts (with new X-axis options)
+    const dtOptions = (min, max, color, showXAxis) => ({
+      plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false, backgroundColor: 'rgba(22, 26, 31, 0.95)', titleColor: '#8E9BAE', bodyColor: color, bodyFont: { size: 11, weight: 'bold' }, borderColor: '#2A313C', borderWidth: 1, padding: 8, displayColors: false } },
+      scales: { 
+        x: { display: showXAxis, grid: { display: false, drawBorder: false }, ticks: { font: { size: 8 }, maxTicksLimit: 3, maxRotation: 0, autoSkip: true, align: 'inner', color: '#5C6775' } }, 
+        y: { display: true, position: 'right', grid: { color: 'rgba(128,128,128,0.1)', drawBorder: false }, ticks: { font: { size: 9 }, maxTicksLimit: 3 }, min: min, max: max } 
+      },
+      layout: { padding: { top: 12, bottom: showXAxis ? 0 : 4 } }, 
+      elements: { point: { radius: 0 }, line: { tension: 0.4, borderWidth: 2 } }, 
+      animation: { duration: 400 }, 
+      interaction: { mode: 'nearest', axis: 'x', intersect: false }
+    });
+
+    ['temp', 'humid', 'light'].forEach(key => {
+       const config = ovChartStore[key];
+       const ctx = document.getElementById(`dt-chart-${key}`).getContext('2d');
+       const isLast = key === 'light'; 
+       dataViewCharts[key] = new Chart(ctx, { type: 'line', data: { labels: currentRangeLabels, datasets: [{ label: config.unit, data: config.data, borderColor: config.color, backgroundColor: getGradient(ctx, config.bgColor, 70), borderWidth: 2, fill: true, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#161A1F', pointHoverBorderWidth: 2 }] }, options: dtOptions(config.min, config.max, config.color, isLast) });
+    });
+
+    // Time Toggle Listeners
+    const timeBtns = document.querySelectorAll('#data-time-toggles .time-btn');
+    timeBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        timeBtns.forEach(b => b.classList.remove('active')); btn.classList.add('active');
+        const range = btn.dataset.range; currentRangeLabels = generateLabels(range);
+        const varianceMap = { 'temp': 2, 'humid': 5, 'light': 200 };
+        ['temp', 'humid', 'light'].forEach(key => {
+           dataViewCharts[key].data.labels = currentRangeLabels;
+           dataViewCharts[key].data.datasets[0].data = generateMockData(ovChartStore[key].data, range, varianceMap[key]);
+           dataViewCharts[key].update();
+        });
+      });
+    });
+  });
+
+  // Modal Logistics
+  let detailedChartInstance = null;
+  const chartModal = document.getElementById('chart-modal');
+  const modalTitle = document.getElementById('modal-title');
+  const modalSubtitle = document.getElementById('modal-subtitle');
+  
+  window.openChartModal = function(key) {
+    const config = ovChartStore[key];
+    const activeRangeBtn = document.querySelector('#data-time-toggles .time-btn.active');
+    const rangeText = activeRangeBtn ? activeRangeBtn.dataset.range : '1H';
+    const subTextMap = { '1H': '过去 60 分钟', '24H': '过去 24 小时', '7D': '过去 7 天' };
+    
+    modalTitle.innerHTML = `<i data-lucide="${config.icon}" width="18" height="18"></i> ${config.title} <span class="modal-subtitle">${subTextMap[rangeText]}</span>`;
+    lucide.createIcons();
+    chartModal.classList.add('active');
+    
+    let chartData = config.data;
+    if (dataViewCharts[key]) chartData = dataViewCharts[key].data.datasets[0].data;
+
+    const ctx = document.getElementById('detailed-chart').getContext('2d');
+    if (detailedChartInstance) detailedChartInstance.destroy();
+    
+    detailedChartInstance = new Chart(ctx, {
+      type: config.type,
+      data: {
+        labels: currentRangeLabels,
+        datasets: [{
+          label: config.unit, data: chartData, borderColor: config.color,
+          backgroundColor: config.type==='line' ? getGradient(ctx, config.bgColor, 300) : config.bgColor,
+          borderWidth: 3, fill: true, borderRadius: config.type==='bar'?4:0, barPercentage: 0.5,
+          pointBackgroundColor: '#161A1F', pointBorderColor: config.color, pointBorderWidth: 2, pointRadius: config.type==='line'?4:0, pointHoverRadius: 7
+        }]
+      },
+      options: {
+        plugins: { legend: {display:false}, tooltip: { enabled: true, mode: 'index', intersect: false, backgroundColor: 'rgba(22,26,31,0.95)', titleColor: '#8E9BAE', bodyColor: config.color, bodyFont: {size:14, weight:'bold'}, borderColor: '#2A313C', borderWidth: 1, padding: 12, displayColors: false, callbacks: { label: function(c) { return `${parseFloat(c.parsed.y).toFixed(1)} ${config.unit}`; } } } },
+        scales: { x: { grid: {display:false, drawBorder:false}, ticks: {color:'#8E9BAE', maxTicksLimit:8} }, y: { position: 'left', grid: {color:'rgba(128,128,128,0.1)', drawBorder:false}, ticks: {color:'#8E9BAE'}, min: config.min, max: config.max } },
+        interaction: { mode: 'nearest', axis: 'x', intersect: false }, layout: { padding: {top:10, right:20} }, elements: { line: {tension:0.4} }
+      }
+    });
+  }
+  window.closeChartModal = function() { chartModal.classList.remove('active'); }
+</script>
+</body>
+</html>

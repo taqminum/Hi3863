@@ -305,6 +305,14 @@ select:focus, input:focus, textarea:focus { border-color: var(--color-cyan); box
 .login-panel button { min-height: 44px; border-radius: 12px; background: var(--color-cyan); color: #06110e; font-weight: 800; }
 .error { color: var(--color-red) !important; }
 
+.mobile-open-design-frame {
+  display: block;
+  width: 100vw;
+  height: 100dvh;
+  border: 0;
+  background: #000;
+}
+
 @media (max-width: 980px) {
   body { overflow: auto; }
   .app-stage { padding: 0; place-items: stretch; }
