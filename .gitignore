@@ -1,6 +1,7 @@
 # Local assistant / editor state
 .claude/
 .codex/
+.gitnexus/
 .workbuddy/
 .worktrees/
 .vscode/
@@ -62,6 +63,8 @@ apps/server/data/
 apps/web/android/.gradle/
 apps/web/android/build/
 apps/web/android/app/build/
+apps/web/android/app/src/main/assets/public/
+apps/web/android/app/src/main/assets/capacitor.config.json
 apps/web/android/local.properties
 
 # Packaged archives and local transfer files

@@ -29,7 +29,7 @@ import {
   updateDeviceStatus,
   updatePatrolTaskStatus
 } from "./db.ts";
-import { canPerform, parsePatrolSteps, type BaseStationTelemetry, type Permission } from "./domain.ts";
+import { canPerform, normalizeIncomingTelemetry, parsePatrolSteps, validateControlInput, type Permission } from "./domain.ts";
 import { readJson, requestId, sendJson, sendText } from "./http-utils.ts";
 import { addSseClient, broadcast } from "./realtime.ts";
 import type { User } from "./types.ts";
@@ -235,9 +235,10 @@ const routes: Handler = async (request, response, url, user) => {
       return;
     }
     const baseStationId = parts[3];
-    const payload = await readJson<BaseStationTelemetry>(request);
-    const result = ingestTelemetryBatch({ ...payload, baseStationId });
-    const report = createCurrentAgentReport(result.readings[0]?.deviceId ?? payload.devices[0]?.deviceId);
+    const payload = await readJson<unknown>(request);
+    const telemetry = normalizeIncomingTelemetry(payload, baseStationId);
+    const result = ingestTelemetryBatch(telemetry);
+    const report = createCurrentAgentReport(result.readings[0]?.deviceId ?? telemetry.devices[0]?.deviceId);
     broadcast("telemetry", { readings: result.readings, report });
     addAudit(null, "telemetry.ingest", "base_station", baseStationId, auditDetails(payload, {
       baseStationId,
@@ -312,14 +313,31 @@ const routes: Handler = async (request, response, url, user) => {
 
   if (method === "POST" && url.pathname === "/api/commands") {
     if (!requirePermission(response, user, "command:create")) return;
-    const body = await readJson<{ deviceId?: string; baseStationId?: string; action?: "forward" | "backward" | "stop"; speed?: number }>(request);
-    const command = createCommand({
+    const body = await readJson<{
+      deviceId?: string;
+      baseStationId?: string;
+      action?: "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_stop";
+      speed?: number;
+      left?: number;
+      right?: number;
+      durationMs?: number;
+    }>(request);
+    const input = {
       deviceId: body.deviceId ?? "ws63-car-001",
       baseStationId: body.baseStationId ?? "sle-base-001",
       action: body.action ?? "stop",
       speed: Number(body.speed ?? 0),
+      left: Number(body.left ?? 0),
+      right: Number(body.right ?? 0),
+      durationMs: Number(body.durationMs ?? 350),
       userId: user.id
-    });
+    };
+    const validation = validateControlInput(input);
+    if (!validation.ok) {
+      send(response, 400, { error: "invalid_command", field: validation.field, message: validation.message });
+      return;
+    }
+    const command = createCommand(input);
     addAudit(user.id, "command.create", "device", body.deviceId ?? "ws63-car-001", auditDetails(body, { result: command }));
     broadcast("command", command);
     send(response, 201, { command });

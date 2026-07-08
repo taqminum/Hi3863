@@ -7,11 +7,20 @@ export type Permission =
   | "audit:read"
   | "user:manage";
 
-export type ControlAction = "forward" | "backward" | "stop";
+export type ControlAction = "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_stop";
 
 export interface ControlInput {
   action: ControlAction;
   speed: number;
+  left?: number;
+  right?: number;
+  durationMs?: number;
+}
+
+export interface CommandValidationResult {
+  ok: boolean;
+  field?: string;
+  message?: string;
 }
 
 export interface PatrolStep {
@@ -39,6 +48,24 @@ export interface BaseStationTelemetry {
     direction?: string;
     status?: string;
   }>;
+}
+
+export interface RawCarTelemetry {
+  deviceId?: string;
+  device_id?: string;
+  receivedAt?: string;
+  seq?: number;
+  temp_x10?: number;
+  humi_x10?: number;
+  light_x10?: number;
+  temp_alert?: number;
+  humi_alert?: number;
+  light_alert?: number;
+  motion?: number;
+  patrol?: number;
+  err?: number;
+  rssi?: number;
+  cached_count?: number;
 }
 
 export interface SensorReading {
@@ -86,10 +113,113 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
+function currentCarPayload(cmd: Exclude<ControlAction, "drive">, speed = 0, durationMs = 0): string {
+  if (cmd === "auto_start" || cmd === "auto_stop") return JSON.stringify({ cmd });
+  if (cmd === "stop") return JSON.stringify({ cmd: "stop", speed: 0, duration_ms: 0 });
+  return JSON.stringify({
+    cmd,
+    speed: cmd === "left" || cmd === "right" ? clamp(speed || 50, 20, 100) : clamp(speed, 0, 100),
+    duration_ms: clamp(durationMs, 0, 3000)
+  });
+}
+
+function driveToCurrentCarPayload(input: ControlInput): string {
+  const left = clamp(Number(input.left ?? 0), -100, 100);
+  const right = clamp(Number(input.right ?? 0), -100, 100);
+  const durationMs = clamp(Number(input.durationMs ?? 350), 0, 3000);
+  const magnitude = Math.max(Math.abs(left), Math.abs(right));
+  if (magnitude === 0) return currentCarPayload("stop");
+
+  const average = (left + right) / 2;
+  const difference = left - right;
+  const action: Exclude<ControlAction, "drive"> =
+    Math.abs(average) >= Math.abs(difference) * 0.75
+      ? average >= 0 ? "forward" : "backward"
+      : difference > 0 ? "right" : "left";
+
+  return currentCarPayload(action, Math.max(20, magnitude), durationMs);
+}
+
 export function toCarControlPayload(input: ControlInput): string {
-  if (input.action === "stop") return "STOP:0";
-  const speed = clamp(input.speed, 0, 100);
-  return input.action === "forward" ? `FORWARD:${speed}` : `BACKWARD:${speed}`;
+  if (input.action === "drive") {
+    return driveToCurrentCarPayload(input);
+  }
+  return currentCarPayload(input.action, input.speed, input.durationMs ?? 600);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+export function validateControlInput(input: ControlInput): CommandValidationResult {
+  if (!["forward", "backward", "left", "right", "stop", "drive", "auto_start", "auto_stop"].includes(input.action)) {
+    return { ok: false, field: "action", message: "action must be a supported WS63E control action" };
+  }
+  if (input.action === "drive") {
+    if (!isFiniteNumber(input.left) || input.left < -100 || input.left > 100) {
+      return { ok: false, field: "left", message: "left must be a number from -100 to 100" };
+    }
+    if (!isFiniteNumber(input.right) || input.right < -100 || input.right > 100) {
+      return { ok: false, field: "right", message: "right must be a number from -100 to 100" };
+    }
+    if (!isFiniteNumber(input.durationMs) || input.durationMs < 0 || input.durationMs > 3000) {
+      return { ok: false, field: "durationMs", message: "durationMs must be a number from 0 to 3000" };
+    }
+    return { ok: true };
+  }
+  if (input.action === "auto_start" || input.action === "auto_stop") {
+    return { ok: true };
+  }
+  if (!isFiniteNumber(input.speed) || input.speed < 0 || input.speed > 100) {
+    return { ok: false, field: "speed", message: "speed must be a number from 0 to 100" };
+  }
+  return { ok: true };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function rawMotionDirection(value: unknown): string {
+  const names = ["stop", "forward", "backward", "left", "right"];
+  const index = Number(value);
+  return Number.isInteger(index) && index >= 0 && index < names.length ? names[index] : "unknown";
+}
+
+export function normalizeIncomingTelemetry(payload: unknown, baseStationId: string): BaseStationTelemetry {
+  if (isObject(payload) && Array.isArray(payload.devices)) {
+    return { ...(payload as unknown as BaseStationTelemetry), baseStationId };
+  }
+
+  const raw = isObject(payload) ? payload as RawCarTelemetry : {};
+  const recordedAt = typeof raw.receivedAt === "string" ? raw.receivedAt : new Date().toISOString();
+  const deviceId = String(raw.deviceId ?? raw.device_id ?? "ws63-car-001");
+  const err = Number(raw.err ?? 0);
+  const patrol = Boolean(raw.patrol);
+  const direction = rawMotionDirection(raw.motion);
+
+  return {
+    batchId: raw.seq === undefined ? undefined : `${baseStationId}-${deviceId}-${raw.seq}`,
+    sequence: raw.seq,
+    baseStationId,
+    receivedAt: recordedAt,
+    link: {
+      rssi: Number(raw.rssi ?? -45),
+      cachedCount: clamp(Number(raw.cached_count ?? 0), 0, 100000),
+      mode: "sle"
+    },
+    devices: [
+      {
+        deviceId,
+        temperature: Number(raw.temp_x10 ?? 0) / 10,
+        humidity: Number(raw.humi_x10 ?? 0) / 10,
+        lightness: Number(raw.light_x10 ?? 0) / 10,
+        gear: patrol ? "AUTO" : "M",
+        direction,
+        status: err === 0 ? (direction === "stop" ? "idle" : "moving") : "fault"
+      }
+    ]
+  };
 }
 
 export function parsePatrolSteps(value: unknown): PatrolStep[] {
@@ -97,7 +227,9 @@ export function parsePatrolSteps(value: unknown): PatrolStep[] {
   return value
     .filter((step): step is Record<string, unknown> => typeof step === "object" && step !== null)
     .map((step) => {
-      const action = step.action === "backward" || step.action === "stop" ? step.action : "forward";
+      const action = ["forward", "backward", "left", "right", "stop"].includes(String(step.action))
+        ? step.action as PatrolStep["action"]
+        : "forward";
       return {
         action,
         speed: action === "stop" ? 0 : clamp(Number(step.speed ?? 40), 0, 100),

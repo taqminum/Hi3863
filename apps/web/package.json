@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "tsc -b --pretty false"
+    "test": "tsc -b --pretty false && node --experimental-strip-types --experimental-specifier-resolution=node --test src/*.test.ts"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",

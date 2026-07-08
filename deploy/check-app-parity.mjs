@@ -4,9 +4,7 @@ import path from "node:path";
 const repo = path.resolve(import.meta.dirname, "..");
 const expected = {
   appId: "icu.rxcccccc.ws63patrol",
-  appName: "WS63 环境巡检平台",
-  apiBaseUrl: "https://www.rxcccccc.icu/ws63-api",
-  tabs: ["总览", "遥控", "巡检", "趋势", "Agent", "设备", "审计", "验收"]
+  apiBaseUrl: "https://www.rxcccccc.icu/ws63-api"
 };
 
 function read(relativePath) {
@@ -33,22 +31,39 @@ check("Capacitor app id/name", () => {
   const file = "apps/web/capacitor.config.ts";
   const content = read(file);
   assertContains(file, content, expected.appId);
-  assertContains(file, content, expected.appName);
+  assertContains(file, content, "appName:");
 });
 
 check("Android native app label", () => {
+  const capacitorConfig = read("apps/web/capacitor.config.ts");
+  const appName = capacitorConfig.match(/appName:\s*"([^"]+)"/)?.[1];
+  if (!appName) {
+    throw new Error("apps/web/capacitor.config.ts is missing appName");
+  }
   const file = "apps/web/android/app/src/main/res/values/strings.xml";
   const content = read(file);
-  assertContains(file, content, `<string name="app_name">${expected.appName}</string>`);
-  assertContains(file, content, `<string name="title_activity_main">${expected.appName}</string>`);
+  assertContains(file, content, `<string name="app_name">${appName}</string>`);
+  assertContains(file, content, `<string name="title_activity_main">${appName}</string>`);
 });
 
-check("Web navigation exposes all acceptance tabs", () => {
-  const file = "apps/web/src/components/Shell.tsx";
+check("Android APK locks to landscape", () => {
+  const file = "apps/web/android/app/src/main/AndroidManifest.xml";
   const content = read(file);
-  for (const tab of expected.tabs) {
-    assertContains(file, content, tab);
-  }
+  assertContains(file, content, 'android:screenOrientation="sensorLandscape"');
+});
+
+check("APK has mobile Open Design route", () => {
+  const files = [
+    "apps/web/src/App.tsx",
+    "apps/web/src/mobile/MobileConsoleApp.tsx",
+    "apps/web/src/mobile/mobileOpenDesign.ts",
+    "apps/web/src/open-design/ws63e-inspection-app-full-8.html"
+  ];
+  const content = files.map(read).join("\n");
+  assertContains("mobile Open Design route", content, "Capacitor.isNativePlatform");
+  assertContains("mobile Open Design route", content, "ws63-mobile-landscape-patch");
+  assertContains("mobile Open Design route", content, "view-control");
+  assertContains("mobile Open Design route", content, "side-nav");
 });
 
 check("APK web assets use cloud API", () => {

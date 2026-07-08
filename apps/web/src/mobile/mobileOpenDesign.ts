@@ -1,0 +1,624 @@
+import type {
+  AgentReport,
+  AuditLog,
+  BaseStationRecord,
+  ControlCommand,
+  DeviceRecord,
+  PatrolTask,
+  Reading,
+  User
+} from "../api";
+import type { ConnectionMode } from "../types";
+
+export type MobileOpenDesignTab = "overview" | "control" | "tasks" | "data" | "manage";
+
+export interface MobileOpenDesignSnapshot {
+  userLabel: string;
+  roleLabel: string;
+  connectionModeLabel: string;
+  deviceName: string;
+  deviceStatus: string;
+  baseStationName: string;
+  baseStationStatus: string;
+  rssiLabel: string;
+  cachedCountLabel: string;
+  temperatureLabel: string;
+  humidityLabel: string;
+  lightnessLabel: string;
+  commandStatus: string;
+  taskStatus: string;
+  agentSummary: string;
+  notice: string;
+  series: {
+    rssi: number[];
+    temperature: number[];
+    humidity: number[];
+    lightness: number[];
+  };
+}
+
+export type MobileOpenDesignToHostMessage =
+  | { source: "ws63-mobile-open-design"; type: "ready" }
+  | { source: "ws63-mobile-open-design"; type: "active-tab"; tab: MobileOpenDesignTab }
+  | { source: "ws63-mobile-open-design"; type: "drive"; left: number; right: number; speed: number; durationMs: number }
+  | { source: "ws63-mobile-open-design"; type: "stop" }
+  | { source: "ws63-mobile-open-design"; type: "create-patrol"; template: "standard" }
+  | { source: "ws63-mobile-open-design"; type: "refresh-agent" }
+  | { source: "ws63-mobile-open-design"; type: "logout" };
+
+export interface HostToMobileOpenDesignMessage {
+  source: "ws63-mobile-host";
+  type: "snapshot";
+  payload: MobileOpenDesignSnapshot;
+}
+
+export interface MobileOpenDesignSnapshotInput {
+  user: User;
+  connectionMode: ConnectionMode;
+  selectedDevice?: DeviceRecord;
+  devices: DeviceRecord[];
+  baseStations: BaseStationRecord[];
+  readings: Reading[];
+  commands: ControlCommand[];
+  tasks: PatrolTask[];
+  reports: AgentReport[];
+  audits: AuditLog[];
+  notice: string;
+}
+
+const landscapePatch = `<style id="ws63-mobile-landscape-patch">
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  background: #000;
+  --ws63-system-right-reserve: clamp(72px, env(safe-area-inset-right, 96px), 128px);
+  justify-content: flex-start !important;
+  align-items: stretch !important;
+  padding-right: var(--ws63-system-right-reserve) !important;
+}
+.device-container {
+  width: calc(100vw - var(--ws63-system-right-reserve)) !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.content-area {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background: var(--bg-app) !important;
+}
+.side-nav {
+  flex: 0 0 80px !important;
+  position: relative !important;
+  z-index: 100 !important;
+}
+#view-overview.active {
+  display: grid !important;
+  grid-template-rows: minmax(108px, 0.72fr) minmax(260px, 1.35fr) !important;
+  gap: 16px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+#view-overview .dash-top-row {
+  min-height: 0 !important;
+  margin-bottom: 0 !important;
+}
+#view-overview .topology-card,
+#view-overview .risk-card {
+  min-height: 0 !important;
+}
+#view-overview .data-grid {
+  height: auto !important;
+  min-height: 0 !important;
+}
+#view-overview .ov-data-card {
+  min-height: 0 !important;
+}
+#view-overview .ov-chart-container {
+  flex: 1 1 auto !important;
+  min-height: 90px !important;
+  height: auto !important;
+}
+.view-section.active:not(#view-overview):not(#view-control) {
+  min-height: 100% !important;
+}
+body[data-active-view="view-control"] .content-area {
+  overflow: hidden !important;
+}
+body[data-active-view="view-control"] #view-control {
+  height: 100% !important;
+  overflow: hidden !important;
+}
+body[data-active-view="view-control"] .speed-value-display {
+  transform: translateY(-12px);
+}
+</style>`;
+
+const touchIsolationScript = `<script id="ws63-mobile-touch-isolation">
+(() => {
+  const originalAddEventListener = EventTarget.prototype.addEventListener;
+  const activeTouchIds = { joystick: null, speed: null };
+  const windowListenerCounts = { touchmove: 0, touchend: 0 };
+
+  function roleForNode(node) {
+    if (!node || !node.closest) return null;
+    if (node.closest("#joystick-base")) return "joystick";
+    if (node.closest("#speed-slider")) return "speed";
+    return null;
+  }
+
+  function roleForPoint(point) {
+    if (!point) return null;
+    const element = document.elementFromPoint(point.clientX, point.clientY);
+    return roleForNode(element);
+  }
+
+  function activeIdForRole(role) {
+    return role === "joystick" ? activeTouchIds.joystick : activeTouchIds.speed;
+  }
+
+  function setActiveId(role, id) {
+    if (role === "joystick") activeTouchIds.joystick = id;
+    if (role === "speed") activeTouchIds.speed = id;
+  }
+
+  function touchListToArray(list) {
+    return Array.from(list || []);
+  }
+
+  function touchForRole(event, role) {
+    const touches = touchListToArray(event.touches);
+    const changedTouches = touchListToArray(event.changedTouches);
+    const activeId = activeIdForRole(role);
+    if (activeId !== null && activeId !== undefined) {
+      return touches.find((touch) => touch.identifier === activeId)
+        || changedTouches.find((touch) => touch.identifier === activeId)
+        || null;
+    }
+    const candidates = changedTouches.length > 0 ? changedTouches : touches;
+    return candidates.find((touch) => roleForPoint(touch) === role) || null;
+  }
+
+  function eventForTouch(event, touch) {
+    if (!touch) return null;
+    const isolated = Object.create(event);
+    Object.defineProperty(isolated, "touches", { configurable: true, value: [touch] });
+    Object.defineProperty(isolated, "targetTouches", { configurable: true, value: [touch] });
+    Object.defineProperty(isolated, "changedTouches", { configurable: true, value: [touch] });
+    isolated.preventDefault = event.preventDefault.bind(event);
+    isolated.stopPropagation = event.stopPropagation.bind(event);
+    isolated.stopImmediatePropagation = event.stopImmediatePropagation.bind(event);
+    return isolated;
+  }
+
+  function roleForWindowTouchListener(type) {
+    if (type !== "touchmove" && type !== "touchend") return null;
+    windowListenerCounts[type] += 1;
+    if (windowListenerCounts[type] === 1) return "joystick";
+    if (windowListenerCounts[type] === 2) return "speed";
+    return null;
+  }
+
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (typeof listener !== "function") {
+      return originalAddEventListener.call(this, type, listener, options);
+    }
+
+    const targetRole = type === "touchstart" ? roleForNode(this) : null;
+    const windowRole = this === window ? roleForWindowTouchListener(type) : null;
+    const role = targetRole || windowRole;
+
+    if (!role) {
+      return originalAddEventListener.call(this, type, listener, options);
+    }
+
+    const wrapped = function(event) {
+      if (type === "touchstart") {
+        const touch = touchForRole(event, role);
+        if (!touch) return;
+        setActiveId(role, touch.identifier);
+        return listener.call(this, eventForTouch(event, touch));
+      }
+
+      if (type === "touchmove") {
+        const touch = touchForRole(event, role);
+        if (!touch) return;
+        return listener.call(this, eventForTouch(event, touch));
+      }
+
+      if (type === "touchend") {
+        const activeId = activeIdForRole(role);
+        const ended = touchListToArray(event.changedTouches).some((touch) => touch.identifier === activeId);
+        if (!ended) return;
+        setActiveId(role, null);
+        return listener.call(this, event);
+      }
+
+      return listener.call(this, event);
+    };
+
+    return originalAddEventListener.call(this, type, wrapped, options);
+  };
+
+  window.__ws63TouchIsolation = {
+    pick(event, role) {
+      return touchForRole(event, role);
+    }
+  };
+})();
+</script>`;
+
+const bridgeScript = `<script id="ws63-mobile-host-bridge">
+(() => {
+  const SOURCE = "ws63-mobile-open-design";
+  const HOST = "ws63-mobile-host";
+  const DRIVE_REPEAT_MS = 1000;
+  let lastDriveAt = 0;
+  let currentSpeed = 0.8;
+  let driveTimer = 0;
+  let latestDrivePayload = null;
+
+  function send(type, payload) {
+    window.parent.postMessage({ source: SOURCE, type, ...(payload || {}) }, "*");
+  }
+
+  function text(selector, value) {
+    const node = document.querySelector(selector);
+    if (node && value !== undefined && value !== null) node.textContent = String(value);
+  }
+
+  function patchByText(label, value) {
+    const nodes = Array.from(document.querySelectorAll(".metric-value, .stat-value, .ov-value, .panel-value"));
+    const target = nodes.find((node) => node.textContent && node.textContent.includes(label));
+    if (target && value !== undefined && value !== null) target.textContent = String(value);
+  }
+
+  function setMetric(index, value) {
+    const node = document.querySelectorAll(".ov-data-value")[index];
+    if (node && value !== undefined && value !== null) node.textContent = String(value);
+  }
+
+  function setDataMetric(cardClass, value) {
+    const text = String(value || "--");
+    const number = text.match(/-?\\d+(?:\\.\\d+)?/)?.[0] || "--";
+    const node = document.querySelector("." + cardClass + " .m-val");
+    if (node) node.textContent = number;
+  }
+
+  function drawFallbackLine(canvas, values) {
+    const ctx = canvas.getContext && canvas.getContext("2d");
+    if (!ctx || !Array.isArray(values) || values.length === 0) return;
+    const width = canvas.width || canvas.clientWidth || 160;
+    const height = canvas.height || canvas.clientHeight || 48;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    ctx.clearRect(0, 0, width, height);
+    ctx.beginPath();
+    values.forEach((value, index) => {
+      const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+      const y = height - ((value - min) / span) * (height - 8) - 4;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = canvas.id.includes("light") ? "#FFC107" : "#00E6A8";
+    ctx.stroke();
+  }
+
+  function fitChartScale(chart, values) {
+    if (!chart?.options?.scales?.y || !Array.isArray(values) || values.length === 0) return;
+    const finiteValues = values.filter((value) => Number.isFinite(value));
+    if (finiteValues.length === 0) return;
+    const min = Math.min(...finiteValues);
+    const max = Math.max(...finiteValues);
+    const span = Math.max(1, max - min);
+    const padding = Math.max(span * 0.18, Math.abs(max || min) * 0.04, 1);
+    chart.options.scales.y.min = Math.floor(min - padding);
+    chart.options.scales.y.max = Math.ceil(max + padding);
+  }
+
+  function updateChart(canvasId, values) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !Array.isArray(values)) return;
+    const chart = window.Chart?.getChart ? window.Chart.getChart(canvas) : null;
+    if (!chart || !chart.data || !chart.data.datasets || !chart.data.datasets[0]) {
+      drawFallbackLine(canvas, values);
+      return;
+    }
+    chart.data.labels = values.map((_, index) => String(index + 1));
+    chart.data.datasets[0].data = values;
+    fitChartScale(chart, values);
+    chart.update("none");
+  }
+
+  function snapshotSeriesForKey(key) {
+    const snapshot = window.__ws63MobileSnapshot;
+    if (!snapshot?.series) return null;
+    if (key === "signal") return snapshot.series.rssi;
+    if (key === "temp") return snapshot.series.temperature;
+    if (key === "humid") return snapshot.series.humidity;
+    if (key === "light") return snapshot.series.lightness;
+    return null;
+  }
+
+  function openLiveChartModal(key) {
+    const originalStore = {
+      signal: { title: "SLE 信号质量", unit: "dBm", icon: "activity", type: "bar", color: "#00E6A8", bgColor: "rgba(0, 230, 168, 0.8)" },
+      temp: { title: "环境温度", unit: "°C", icon: "thermometer", type: "line", color: "#FF9800", bgColor: "rgba(255, 152, 0, 0.2)" },
+      humid: { title: "环境湿度", unit: "%RH", icon: "droplets", type: "line", color: "#FFB020", bgColor: "rgba(255, 176, 32, 0.3)" },
+      light: { title: "环境光照", unit: "lx", icon: "sun", type: "line", color: "#FFC107", bgColor: "rgba(255, 193, 7, 0.2)" }
+    };
+    const config = originalStore[key];
+    const values = snapshotSeriesForKey(key);
+    if (!config || !Array.isArray(values) || !window.Chart) {
+      return window.__ws63OriginalOpenChartModal?.(key);
+    }
+
+    const modal = document.getElementById("chart-modal");
+    const title = document.getElementById("modal-title");
+    const canvas = document.getElementById("detailed-chart");
+    const ctx = canvas?.getContext && canvas.getContext("2d");
+    if (!modal || !title || !ctx) return window.__ws63OriginalOpenChartModal?.(key);
+
+    title.innerHTML = '<i data-lucide="' + config.icon + '" width="18" height="18"></i> ' +
+      config.title + ' <span class="modal-subtitle">实时数据</span>';
+    window.lucide?.createIcons?.();
+    modal.classList.add("active");
+
+    if (window.__ws63DetailedChart) window.__ws63DetailedChart.destroy();
+    window.__ws63DetailedChart = new window.Chart(ctx, {
+      type: config.type,
+      data: {
+        labels: values.map((_, index) => String(index + 1)),
+        datasets: [{
+          label: config.unit,
+          data: values,
+          borderColor: config.color,
+          backgroundColor: config.type === "line" ? "rgba(255, 193, 7, 0.12)" : config.bgColor,
+          borderWidth: 3,
+          fill: true,
+          pointRadius: config.type === "line" ? 3 : 0
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#8E9BAE", maxTicksLimit: 8 } },
+          y: { position: "left", ticks: { color: "#8E9BAE" } }
+        },
+        animation: { duration: 0 },
+        elements: { line: { tension: 0.4 } }
+      }
+    });
+    fitChartScale(window.__ws63DetailedChart, values);
+    window.__ws63DetailedChart.update("none");
+  }
+
+  function setActiveView(target) {
+    if (!target) return;
+    document.body.dataset.activeView = target;
+    const map = {
+      "view-overview": "overview",
+      "view-control": "control",
+      "view-tasks": "tasks",
+      "view-data": "data",
+      "view-manage": "manage"
+    };
+    if (map[target]) send("active-tab", { tab: map[target] });
+  }
+
+  function readSpeed() {
+    const raw = document.getElementById("speed-val")?.textContent || "";
+    const parsed = Number.parseFloat(raw);
+    if (Number.isFinite(parsed)) currentSpeed = parsed;
+    return currentSpeed;
+  }
+
+  function emitDriveFromPointer(event, force) {
+    const base = document.getElementById("joystick-base");
+    if (!base) return;
+    const rect = base.getBoundingClientRect();
+    const point = event.touches ? (window.__ws63TouchIsolation?.pick(event, "joystick") || event.touches[0]) : event;
+    if (!point) return;
+    const dx = point.clientX - rect.left - rect.width / 2;
+    const dy = point.clientY - rect.top - rect.height / 2;
+    const radius = 40;
+    const x = Math.max(-1, Math.min(1, dx / radius));
+    const y = Math.max(-1, Math.min(1, -dy / radius));
+    const left = Math.max(-100, Math.min(100, Math.round((y + x) * 70)));
+    const right = Math.max(-100, Math.min(100, Math.round((y - x) * 70)));
+    if (Math.hypot(x, y) < 0.16) {
+      stopDrive();
+      return;
+    }
+    startDrive({ left, right, speed: readSpeed(), durationMs: 350 }, force);
+  }
+
+  function repeatDrive(force) {
+    if (!latestDrivePayload) return;
+    const now = Date.now();
+    if (!force && now - lastDriveAt < 280) return;
+    lastDriveAt = now;
+    send("drive", latestDrivePayload);
+  }
+
+  function startDrive(payload, force) {
+    latestDrivePayload = payload;
+    repeatDrive(Boolean(force));
+    if (!driveTimer) {
+      driveTimer = window.setInterval(() => repeatDrive(false), DRIVE_REPEAT_MS);
+    }
+  }
+
+  function stopDrive() {
+    latestDrivePayload = null;
+    if (driveTimer) {
+      window.clearInterval(driveTimer);
+      driveTimer = 0;
+    }
+    send("stop");
+  }
+
+  function attachControlBridge() {
+    const joystickBase = document.getElementById("joystick-base");
+    if (joystickBase) {
+      joystickBase.addEventListener("mousedown", (event) => emitDriveFromPointer(event, true));
+      joystickBase.addEventListener("mousemove", (event) => emitDriveFromPointer(event, false));
+      joystickBase.addEventListener("touchstart", (event) => emitDriveFromPointer(event, true), { passive: true });
+      joystickBase.addEventListener("touchmove", (event) => emitDriveFromPointer(event, false), { passive: true });
+      window.addEventListener("mouseup", stopDrive);
+      window.addEventListener("touchend", stopDrive);
+      window.addEventListener("blur", stopDrive);
+    }
+    document.getElementById("speed-slider")?.addEventListener("touchend", readSpeed);
+    document.getElementById("speed-slider")?.addEventListener("mouseup", readSpeed);
+    document.querySelector(".btn-primary")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      send("create-patrol", { template: "standard" });
+    }, true);
+    document.querySelector(".agent-card")?.addEventListener("click", () => send("refresh-agent"));
+  }
+
+  function applySnapshot(snapshot) {
+    if (!snapshot) return;
+    text("[data-od-id='app-title']", "WS63E 控制台");
+    patchByText("dBm", snapshot.rssiLabel);
+    patchByText("°C", snapshot.temperatureLabel);
+    patchByText("%RH", snapshot.humidityLabel);
+    patchByText("lx", snapshot.lightnessLabel);
+    setMetric(0, snapshot.rssiLabel);
+    setMetric(1, snapshot.temperatureLabel);
+    setMetric(2, snapshot.humidityLabel);
+    setMetric(3, snapshot.lightnessLabel);
+    setDataMetric("m-temp", snapshot.temperatureLabel);
+    setDataMetric("m-humid", snapshot.humidityLabel);
+    setDataMetric("m-light", snapshot.lightnessLabel);
+    const statusValues = document.querySelectorAll(".status-val");
+    if (statusValues[0]) statusValues[0].textContent = snapshot.deviceName;
+    if (statusValues[1]) statusValues[1].textContent = snapshot.baseStationName + " " + snapshot.baseStationStatus;
+    if (statusValues[2]) statusValues[2].textContent = snapshot.rssiLabel;
+    const agentDesc = document.querySelector(".agent-desc");
+    if (agentDesc) agentDesc.textContent = snapshot.agentSummary;
+    updateChart("ov-chart-signal", snapshot.series.rssi);
+    updateChart("ov-chart-temp", snapshot.series.temperature);
+    updateChart("ov-chart-humid", snapshot.series.humidity);
+    updateChart("ov-chart-light", snapshot.series.lightness);
+    updateChart("dt-chart-temp", snapshot.series.temperature);
+    updateChart("dt-chart-humid", snapshot.series.humidity);
+    updateChart("dt-chart-light", snapshot.series.lightness);
+    window.__ws63MobileSnapshot = snapshot;
+  }
+
+  window.addEventListener("load", () => {
+    window.__ws63OriginalOpenChartModal = window.openChartModal;
+    window.openChartModal = openLiveChartModal;
+    setActiveView("view-overview");
+    document.querySelectorAll(".nav-item").forEach((item) => {
+      item.addEventListener("click", () => setActiveView(item.dataset.target));
+    });
+    attachControlBridge();
+    send("ready");
+  });
+
+  window.addEventListener("message", (event) => {
+    const message = event.data || {};
+    if (message.source !== HOST || message.type !== "snapshot") return;
+    applySnapshot(message.payload);
+  });
+})();
+</script>`;
+
+function injectBeforeCloseTag(html: string, closeTag: string, snippet: string): string {
+  const index = html.toLowerCase().lastIndexOf(closeTag);
+  if (index === -1) return `${html}${snippet}`;
+  return `${html.slice(0, index)}${snippet}${html.slice(index)}`;
+}
+
+function injectBeforeOpenDesignScript(html: string, scriptTag: string, snippet: string): string {
+  const index = html.indexOf(scriptTag);
+  if (index === -1) return injectBeforeCloseTag(html, "</head>", snippet);
+  return `${html.slice(0, index)}${snippet}${html.slice(index)}`;
+}
+
+export function buildMobileOpenDesignSrcDoc(html: string): string {
+  const withPatch = html.includes("ws63-mobile-landscape-patch")
+    ? html
+    : injectBeforeCloseTag(html, "</head>", landscapePatch);
+  const withTouchIsolation = withPatch.includes("ws63-mobile-touch-isolation")
+    ? withPatch
+    : injectBeforeOpenDesignScript(withPatch, "<script src=\"https://unpkg.com/lucide@latest\"></script>", touchIsolationScript);
+  return withTouchIsolation.includes("ws63-mobile-host-bridge")
+    ? withTouchIsolation
+    : injectBeforeCloseTag(withTouchIsolation, "</body>", bridgeScript);
+}
+
+function formatNumber(value: number | undefined, digits = 1): string {
+  return Number.isFinite(value) ? Number(value).toFixed(digits) : "--";
+}
+
+function statusLabel(value?: string): string {
+  if (value === "online" || value === "cloud-online") return "在线";
+  if (value === "offline") return "离线";
+  return value || "未知";
+}
+
+function roleLabel(role: User["role"]): string {
+  return role === "admin" ? "管理员" : role === "operator" ? "操作员" : "观察员";
+}
+
+function normalizeAgentReport(report?: AgentReport): { summary: string } {
+  return {
+    summary: report?.summary ?? "等待 Agent 分析结果"
+  };
+}
+
+function series(readings: Reading[], field: "rssi" | "temperature" | "humidity" | "lightness"): number[] {
+  const values = readings.slice(-24).map((reading) => Number(reading[field] ?? 0));
+  return values.length > 0 ? values : Array.from({ length: 24 }, () => 0);
+}
+
+export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInput): MobileOpenDesignSnapshot {
+  const latest = input.readings.at(-1);
+  const base = input.baseStations.find((item) => item.id === input.selectedDevice?.base_station_id) ?? input.baseStations[0];
+  const report = normalizeAgentReport(input.reports[0]);
+  const command = input.commands[0];
+  const task = input.tasks[0];
+  const rssi = latest?.rssi ?? base?.last_rssi;
+  const cachedCount = latest?.cachedCount ?? base?.cached_count ?? 0;
+
+  return {
+    userLabel: input.user.displayName || input.user.username,
+    roleLabel: roleLabel(input.user.role),
+    connectionModeLabel: input.connectionMode === "local" ? "本地直连" : "云端基站",
+    deviceName: input.selectedDevice?.name || "WS63E-巡检车-01",
+    deviceStatus: statusLabel(input.selectedDevice?.status),
+    baseStationName: base?.name || "SLE 基站",
+    baseStationStatus: statusLabel(base?.status ?? base?.network_status),
+    rssiLabel: Number.isFinite(rssi) ? `${rssi} dBm` : "-- dBm",
+    cachedCountLabel: `${cachedCount} 条`,
+    temperatureLabel: `${formatNumber(latest?.temperature)}°C`,
+    humidityLabel: `${formatNumber(latest?.humidity, 0)}%RH`,
+    lightnessLabel: `${formatNumber(latest?.lightness, 0)} lx`,
+    commandStatus: command ? `${command.payload} / ${command.status}` : "--",
+    taskStatus: task ? `${task.name} / ${task.status}` : "--",
+    agentSummary: report.summary,
+    notice: input.notice,
+    series: {
+      rssi: series(input.readings, "rssi"),
+      temperature: series(input.readings, "temperature"),
+      humidity: series(input.readings, "humidity"),
+      lightness: series(input.readings, "lightness")
+    }
+  };
+}
