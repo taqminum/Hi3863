@@ -193,8 +193,8 @@ apps/web/android/app/build/outputs/apk/debug/app-debug.apk
 Project: /home/rxcccccc/ws63-platform
 Web root: /var/www/ws63-platform
 pm2 service: ws63-platform
-Web URL: https://rxcccccc.icu/ws63/
-API URL: https://rxcccccc.icu/ws63-api/api/health
+Web URL: https://www.rxcccccc.icu/ws63/
+API URL: https://www.rxcccccc.icu/ws63-api/api/health
 ```
 
 从 Windows 工作区部署：
