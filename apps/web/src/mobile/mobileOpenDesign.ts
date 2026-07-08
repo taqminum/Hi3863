@@ -9,7 +9,12 @@ import type {
   User
 } from "../api";
 import { connectionModeLabel } from "../connectionModes.ts";
-import { buildTimeSeries } from "../historySeries.ts";
+import {
+  bucketMsForGranularity,
+  buildTimeSeries,
+  durationMsForGranularity,
+  type SeriesGranularity
+} from "../historySeries.ts";
 import type { ConnectionMode } from "../types";
 
 export type MobileOpenDesignTab = "overview" | "control" | "tasks" | "data" | "manage";
@@ -34,6 +39,18 @@ export interface MobileOpenDesignSnapshot {
   taskTimeline: MobileTaskTimelineItem[];
   agentSummary: string;
   notice: string;
+  cloudApiStatus: "online" | "offline";
+  telemetryStatus: "live" | "stale" | "empty";
+  telemetryDetail: string;
+  activeTransportStatus: "online" | "warning" | "offline";
+  activeTransportLabel: string;
+  activeTransportDetail: string;
+  wifiSignalLabel: string;
+  wifiSpeedLabel: string;
+  riskLevel: "low" | "medium" | "high";
+  riskSummary: string;
+  riskSuggestions: string[];
+  riskEvidence: string[];
   connectionMode: ConnectionMode;
   historyRange: MobileHistoryRange;
   seriesLabels: string[];
@@ -43,6 +60,13 @@ export interface MobileOpenDesignSnapshot {
     humidity: Array<number | null>;
     lightness: Array<number | null>;
   };
+  detailSeries: Record<SeriesGranularity, {
+    labels: string[];
+    rssi: Array<number | null>;
+    temperature: Array<number | null>;
+    humidity: Array<number | null>;
+    lightness: Array<number | null>;
+  }>;
 }
 
 export interface MobileTaskCard {
@@ -67,6 +91,7 @@ export type MobileOpenDesignToHostMessage =
   | { source: "ws63-mobile-open-design"; type: "drive"; left: number; right: number; speed: number; durationMs: number }
   | { source: "ws63-mobile-open-design"; type: "stop" }
   | { source: "ws63-mobile-open-design"; type: "connection-mode"; mode: ConnectionMode }
+  | { source: "ws63-mobile-open-design"; type: "connect-network" }
   | { source: "ws63-mobile-open-design"; type: "history-range"; range: MobileHistoryRange }
   | { source: "ws63-mobile-open-design"; type: "create-patrol"; template: "standard" }
   | { source: "ws63-mobile-open-design"; type: "refresh-agent" }
@@ -91,6 +116,9 @@ export interface MobileOpenDesignSnapshotInput {
   audits: AuditLog[];
   notice: string;
   historyRange: MobileHistoryRange;
+  realtimeReading?: Reading | null;
+  previousRealtimeReading?: Reading | null;
+  cloudApiOnline?: boolean;
 }
 
 const landscapePatch = `<style id="ws63-mobile-landscape-patch">
@@ -202,30 +230,240 @@ body[data-active-view="view-control"] #view-control {
 body[data-active-view="view-control"] .speed-value-display {
   transform: translateY(-12px);
 }
+body[data-active-view="view-control"] .speed-label {
+  transform: translateY(12px);
+  z-index: 2;
+  white-space: nowrap;
+}
 .ws63-connection-switch {
   position: absolute;
   top: 10px;
-  left: 96px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 180;
-  display: flex;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(48px, 1fr));
+  width: min(230px, calc(100vw - 240px));
+  min-width: 168px;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 999px;
   background: rgba(8, 12, 18, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(10px);
 }
 .ws63-connection-switch button {
-  height: 28px;
-  padding: 0 10px;
+  height: 32px;
+  min-width: 0;
+  padding: 0 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 999px;
   background: transparent;
   color: #8E9BAE;
-  font: 600 11px system-ui, sans-serif;
+  font: 700 12px system-ui, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+  touch-action: manipulation;
 }
 .ws63-connection-switch button.active {
   color: #fff;
   background: rgba(0, 194, 255, 0.22);
+}
+.cloud-status.ws63-status-online {
+  color: var(--color-cyan) !important;
+  background: rgba(0, 230, 168, 0.1) !important;
+  border-color: rgba(0, 230, 168, 0.28) !important;
+}
+.cloud-status.ws63-status-warning {
+  color: var(--color-amber) !important;
+  background: rgba(255, 176, 32, 0.1) !important;
+  border-color: rgba(255, 176, 32, 0.32) !important;
+}
+.cloud-status.ws63-status-offline {
+  color: var(--color-red) !important;
+  background: rgba(255, 77, 79, 0.1) !important;
+  border-color: rgba(255, 77, 79, 0.32) !important;
+}
+.cloud-status {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cloud-status.ws63-status-warning .status-dot { background-color: var(--color-amber) !important; box-shadow: 0 0 6px var(--color-amber) !important; }
+.cloud-status.ws63-status-offline .status-dot { background-color: var(--color-red) !important; box-shadow: 0 0 6px var(--color-red) !important; }
+.topology-card .node.ws63-node-offline .node-icon {
+  color: var(--fg-tertiary) !important;
+  border-color: var(--border-color) !important;
+}
+.topology-card .node.ws63-node-warning .node-icon {
+  color: var(--color-amber) !important;
+  border-color: rgba(255, 176, 32, 0.45) !important;
+}
+.topology-card {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.topology-card .node.ws63-node-hidden,
+.topology-card .link-line.ws63-link-hidden,
+.topology-card .link-label.ws63-link-hidden {
+  display: none !important;
+}
+.topology-card.ws63-topology-compact {
+  justify-content: center !important;
+  gap: 28px !important;
+}
+.topology-card .link-line.ws63-link-offline { background: var(--border-color) !important; box-shadow: none !important; }
+.topology-card .link-line.ws63-link-warning { background: var(--color-amber) !important; box-shadow: none !important; }
+.risk-card {
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.risk-card.ws63-risk-low { border-left-color: var(--color-cyan) !important; }
+.risk-card.ws63-risk-medium { border-left-color: var(--color-amber) !important; }
+.risk-card.ws63-risk-high { border-left-color: var(--color-red) !important; }
+.risk-card .ws63-risk-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 10px;
+  color: var(--fg-secondary);
+  line-height: 1.45;
+}
+.ws63-detail-granularity {
+  display: flex;
+  gap: 4px;
+  margin-left: 10px;
+}
+.ws63-detail-granularity button {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+  font: 600 10px system-ui, sans-serif;
+  padding: 3px 8px;
+}
+.ws63-detail-granularity button.active {
+  color: #fff;
+  background: rgba(0, 194, 255, 0.24);
+  border-color: rgba(0, 194, 255, 0.36);
+}
+.ws63-chart-readout {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  color: var(--fg-secondary);
+  font: 600 10px system-ui, sans-serif;
+}
+.sys-status .theme-btn,
+.sys-status .ws63-wifi-action {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  border-radius: 50% !important;
+  border: 1px solid var(--border-color) !important;
+  background: var(--bg-surface) !important;
+  color: var(--fg-secondary) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.sys-status .theme-btn:active,
+.sys-status .ws63-wifi-action:active {
+  transform: scale(0.94);
+}
+.ws63-wifi-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ws63-wifi-meta {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  color: var(--fg-tertiary);
+  font: 700 9px var(--font-mono), monospace;
+  line-height: 1.05;
+  min-width: 34px;
+}
+.ws63-info-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.42);
+}
+.ws63-info-modal.active { display: flex; }
+.ws63-info-panel {
+  width: min(520px, calc(100vw - 220px));
+  max-height: calc(100vh - 92px);
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: #161A1F;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
+  padding: 18px;
+}
+body.light-theme .ws63-info-panel {
+  background: #FFFFFF;
+}
+.ws63-info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.ws63-info-head h3 {
+  margin: 0;
+  color: var(--fg-primary);
+  font-size: 16px;
+}
+.ws63-info-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+}
+.ws63-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.ws63-info-item {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+}
+.ws63-info-label {
+  color: var(--fg-tertiary);
+  font-size: 10px;
+  margin-bottom: 4px;
+}
+.ws63-info-value {
+  color: var(--fg-primary);
+  font: 700 12px system-ui, sans-serif;
+}
+.ws63-info-section {
+  margin-top: 12px;
+  color: var(--fg-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.ws63-info-section ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
 }
 </style>`;
 
@@ -352,6 +590,8 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
   let currentSpeed = 0.8;
   let driveTimer = 0;
   let latestDrivePayload = null;
+  let detailGranularity = "second";
+  let activeDetailKey = null;
 
   function send(type, payload) {
     window.parent.postMessage({ source: SOURCE, type, ...(payload || {}) }, "*");
@@ -360,6 +600,61 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
   function text(selector, value) {
     const node = document.querySelector(selector);
     if (node && value !== undefined && value !== null) node.textContent = String(value);
+  }
+
+  function html(selector, value) {
+    const node = document.querySelector(selector);
+    if (node && value !== undefined && value !== null) node.innerHTML = String(value);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function ensureInfoModal() {
+    let modal = document.getElementById("ws63-info-modal");
+    if (modal) return modal;
+    modal = document.createElement("div");
+    modal.id = "ws63-info-modal";
+    modal.className = "ws63-info-modal";
+    modal.innerHTML = [
+      '<div class="ws63-info-panel">',
+      '<div class="ws63-info-head"><h3 id="ws63-info-title"></h3><button class="ws63-info-close" type="button">×</button></div>',
+      '<div id="ws63-info-body"></div>',
+      '</div>'
+    ].join("");
+    modal.querySelector(".ws63-info-close")?.addEventListener("click", () => modal.classList.remove("active"));
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) modal.classList.remove("active");
+    });
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function showInfoModal(title, bodyHtml) {
+    const modal = ensureInfoModal();
+    const titleNode = modal.querySelector("#ws63-info-title");
+    const bodyNode = modal.querySelector("#ws63-info-body");
+    if (titleNode) titleNode.textContent = title;
+    if (bodyNode) bodyNode.innerHTML = bodyHtml;
+    modal.classList.add("active");
+  }
+
+  function infoGrid(items) {
+    return '<div class="ws63-info-grid">' + items.map(([label, value]) =>
+      '<div class="ws63-info-item"><div class="ws63-info-label">' + escapeHtml(label) + '</div><div class="ws63-info-value">' + escapeHtml(value || "--") + '</div></div>'
+    ).join("") + '</div>';
+  }
+
+  function listHtml(items) {
+    const normalized = (items || []).filter(Boolean);
+    if (!normalized.length) return '<div class="ws63-info-section">暂无更多明细。</div>';
+    return '<ul>' + normalized.map((item) => '<li>' + escapeHtml(item) + '</li>').join("") + '</ul>';
   }
 
   function patchByText(label, value) {
@@ -441,6 +736,65 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     return null;
   }
 
+  function detailSeriesForKey(key) {
+    const snapshot = window.__ws63MobileSnapshot;
+    const group = snapshot?.detailSeries?.[detailGranularity];
+    if (!group) return null;
+    if (key === "signal") return group.rssi;
+    if (key === "temp") return group.temperature;
+    if (key === "humid") return group.humidity;
+    if (key === "light") return group.lightness;
+    return null;
+  }
+
+  function labelsForDetail() {
+    const snapshot = window.__ws63MobileSnapshot;
+    return snapshot?.detailSeries?.[detailGranularity]?.labels || snapshot?.seriesLabels || [];
+  }
+
+  function granularityLabel(value) {
+    if (value === "minute") return "1m";
+    if (value === "hour") return "1h";
+    if (value === "day") return "1d";
+    return "1s";
+  }
+
+  function ensureDetailGranularityControls(titleNode, key) {
+    titleNode.querySelector(".ws63-detail-granularity")?.remove();
+    titleNode.querySelector(".ws63-chart-readout")?.remove();
+    const controls = document.createElement("span");
+    controls.className = "ws63-detail-granularity";
+    [
+      ["second", "1s"],
+      ["minute", "1m"],
+      ["hour", "1h"],
+      ["day", "1d"]
+    ].forEach(([value, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.granularity = value;
+      button.textContent = label;
+      button.classList.toggle("active", detailGranularity === value);
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        detailGranularity = value;
+        activeDetailKey = key;
+        openLiveChartModal(key);
+      });
+      controls.appendChild(button);
+    });
+    titleNode.appendChild(controls);
+  }
+
+  function setChartReadout(titleNode, label, value, unit) {
+    titleNode.querySelector(".ws63-chart-readout")?.remove();
+    const readout = document.createElement("span");
+    readout.className = "ws63-chart-readout";
+    readout.textContent = value === null || value === undefined ? label + " --" : label + " " + value + " " + unit;
+    titleNode.appendChild(readout);
+  }
+
   function openLiveChartModal(key) {
     const originalStore = {
       signal: { title: "SLE 信号质量", unit: "dBm", icon: "activity", type: "bar", color: "#00E6A8", bgColor: "rgba(0, 230, 168, 0.8)" },
@@ -449,7 +803,7 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
       light: { title: "环境光照", unit: "lx", icon: "sun", type: "line", color: "#FFC107", bgColor: "rgba(255, 193, 7, 0.2)" }
     };
     const config = originalStore[key];
-    const values = snapshotSeriesForKey(key);
+    const values = detailSeriesForKey(key) || snapshotSeriesForKey(key);
     if (!config || !Array.isArray(values) || !window.Chart) {
       return window.__ws63OriginalOpenChartModal?.(key);
     }
@@ -460,8 +814,10 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const ctx = canvas?.getContext && canvas.getContext("2d");
     if (!modal || !title || !ctx) return window.__ws63OriginalOpenChartModal?.(key);
 
+    activeDetailKey = key;
     title.innerHTML = '<i data-lucide="' + config.icon + '" width="18" height="18"></i> ' +
-      config.title + ' <span class="modal-subtitle">实时数据</span>';
+      config.title + ' <span class="modal-subtitle">' + granularityLabel(detailGranularity) + '</span>';
+    ensureDetailGranularityControls(title, key);
     window.lucide?.createIcons?.();
     modal.classList.add("active");
 
@@ -469,7 +825,7 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     window.__ws63DetailedChart = new window.Chart(ctx, {
       type: config.type,
       data: {
-        labels: Array.isArray(window.__ws63SeriesLabels) ? window.__ws63SeriesLabels : values.map((_, index) => String(index + 1)),
+        labels: labelsForDetail().length > 0 ? labelsForDetail() : values.map((_, index) => String(index + 1)),
         datasets: [{
           label: config.unit,
           data: values,
@@ -477,15 +833,39 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
           backgroundColor: config.type === "line" ? "rgba(255, 193, 7, 0.12)" : config.bgColor,
           borderWidth: 3,
           fill: true,
-          pointRadius: config.type === "line" ? 3 : 0
+          pointRadius: config.type === "line" ? 4 : 0,
+          pointHoverRadius: config.type === "line" ? 8 : 0,
+          pointHitRadius: 18,
+          pointBackgroundColor: "#161A1F",
+          pointBorderColor: config.color,
+          pointBorderWidth: 2
         }]
       },
       options: {
-        plugins: { legend: { display: false } },
+        onClick: (_event, elements, chart) => {
+          const element = elements?.[0];
+          if (!element) return;
+          const index = element.index;
+          const label = chart.data.labels?.[index] || "";
+          const value = chart.data.datasets?.[0]?.data?.[index];
+          setChartReadout(title, label, value, config.unit);
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: true,
+            mode: "nearest",
+            intersect: false,
+            callbacks: {
+              label: (context) => context.parsed.y === null || context.parsed.y === undefined ? "--" : context.parsed.y + " " + config.unit
+            }
+          }
+        },
         scales: {
           x: { ticks: { color: "#8E9BAE", maxTicksLimit: 8 } },
           y: { position: "left", ticks: { color: "#8E9BAE" } }
         },
+        interaction: { mode: "nearest", axis: "x", intersect: false },
         spanGaps: false,
         animation: { duration: 0 },
         elements: { line: { tension: 0.4 } }
@@ -538,6 +918,52 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
         send("history-range", { range });
       }, true);
     });
+  }
+
+  function attachThemeBridge() {
+    ensureSystemActions();
+    const button = document.getElementById("theme-toggle");
+    if (!button || button.dataset.ws63ThemeBridge === "1") return;
+    button.dataset.ws63ThemeBridge = "1";
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const isLight = document.body.classList.toggle("light-theme");
+      button.innerHTML = '<i data-lucide="' + (isLight ? "moon" : "sun") + '" width="16" height="16"></i>';
+      window.lucide?.createIcons?.();
+    }, true);
+  }
+
+  function ensureSystemActions() {
+    const sysStatus = document.querySelector(".sys-status");
+    if (!sysStatus) return;
+    const themeButton = document.getElementById("theme-toggle");
+    if (themeButton) themeButton.classList.add("theme-btn");
+    if (document.getElementById("ws63-wifi-action")) return;
+    document.querySelectorAll(".sys-status [data-lucide='wifi'], .sys-status .lucide-wifi").forEach((node) => node.remove());
+    const wrap = document.createElement("span");
+    wrap.id = "ws63-wifi-wrap";
+    wrap.className = "ws63-wifi-wrap";
+    wrap.innerHTML = [
+      '<button id="ws63-wifi-action" class="ws63-wifi-action" type="button" aria-label="连接 Wi-Fi">',
+      '<i data-lucide="wifi" width="16" height="16"></i>',
+      '</button>',
+      '<span class="ws63-wifi-meta"><span id="ws63-wifi-signal">--dBm</span><span id="ws63-wifi-speed">--</span></span>'
+    ].join("");
+    sysStatus.appendChild(wrap);
+    window.lucide?.createIcons?.();
+  }
+
+  function attachWifiBridge() {
+    ensureSystemActions();
+    const button = document.getElementById("ws63-wifi-action");
+    if (!button || button.dataset.ws63WifiBridge === "1") return;
+    button.dataset.ws63WifiBridge = "1";
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      send("connect-network");
+    }, true);
   }
 
   function setActiveView(target) {
@@ -688,12 +1114,161 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     document.querySelector(".agent-card")?.addEventListener("click", () => send("refresh-agent"));
   }
 
+  function setStatusClass(node, status) {
+    if (!node) return;
+    node.classList.remove("ws63-status-online", "ws63-status-warning", "ws63-status-offline");
+    node.classList.add("ws63-status-" + (status || "offline"));
+  }
+
+  function updateTopStatus(snapshot) {
+    ensureSystemActions();
+    const status = document.querySelector(".cloud-status");
+    if (status) {
+      status.innerHTML = '<div class="status-dot"></div> ' + snapshot.activeTransportLabel;
+      setStatusClass(status, snapshot.activeTransportStatus);
+      status.title = "";
+    }
+    document.getElementById("ws63-battery-status")?.remove();
+    document.querySelectorAll(".sys-status [data-lucide='battery-medium'], .sys-status .lucide-battery-medium").forEach((node) => node.remove());
+    text("#ws63-wifi-signal", snapshot.wifiSignalLabel || "--dBm");
+    text("#ws63-wifi-speed", snapshot.wifiSpeedLabel || "--");
+  }
+
+  function updateTopology(snapshot) {
+    const card = document.querySelector(".topology-card");
+    const nodes = Array.from(document.querySelectorAll(".topology-card .node"));
+    const links = Array.from(document.querySelectorAll(".topology-card .link-line"));
+    const labels = Array.from(document.querySelectorAll(".topology-card .link-label"));
+    card?.classList.toggle("ws63-topology-compact", snapshot.connectionMode !== "cloud");
+    card?.setAttribute("title", "查看连接详情");
+    nodes.forEach((node, index) => {
+      node.classList.remove("active", "ws63-node-warning", "ws63-node-offline", "ws63-node-hidden");
+      const hidden = (snapshot.connectionMode === "gateway" && index === 1)
+        || (snapshot.connectionMode === "car-direct" && (index === 1 || index === 2));
+      if (hidden) {
+        node.classList.add("ws63-node-hidden");
+        return;
+      }
+      const online = index === 0
+        || (index === 1 && snapshot.connectionMode === "cloud" && snapshot.activeTransportStatus === "online")
+        || (index === 2 && snapshot.connectionMode !== "car-direct" && snapshot.activeTransportStatus !== "offline")
+        || (index === 3 && snapshot.deviceStatus !== "离线");
+      if (online) node.classList.add("active");
+      else node.classList.add("ws63-node-offline");
+      if (snapshot.activeTransportStatus === "warning" && index >= 2) node.classList.add("ws63-node-warning");
+    });
+    links.forEach((link, index) => {
+      link.classList.remove("link-active", "link-warning", "ws63-link-warning", "ws63-link-offline", "ws63-link-hidden");
+      const hidden = (snapshot.connectionMode === "gateway" && index === 0)
+        || (snapshot.connectionMode === "car-direct" && index < 2);
+      if (hidden) {
+        link.classList.add("ws63-link-hidden");
+        return;
+      }
+      if (snapshot.activeTransportStatus === "online") link.classList.add("link-active");
+      else if (snapshot.activeTransportStatus === "warning") link.classList.add("ws63-link-warning");
+      else link.classList.add("ws63-link-offline");
+    });
+    labels.forEach((label, index) => {
+      label.classList.remove("ws63-link-hidden");
+      const hidden = (snapshot.connectionMode === "gateway" && index === 0)
+        || (snapshot.connectionMode === "car-direct" && index < 2);
+      if (hidden) label.classList.add("ws63-link-hidden");
+    });
+    if (labels[0]) labels[0].textContent = snapshot.connectionMode === "cloud" ? "HTTPS" : snapshot.connectionMode === "gateway" ? "UDP" : "LOCAL";
+    if (labels[1]) labels[1].textContent = snapshot.rssiLabel;
+  }
+
+  function updateRiskCard(snapshot) {
+    const risk = document.querySelector(".risk-card");
+    if (!risk) return;
+    risk.title = "查看 Agent 分析详情";
+    risk.classList.remove("ws63-risk-low", "ws63-risk-medium", "ws63-risk-high");
+    risk.classList.add("ws63-risk-" + snapshot.riskLevel);
+    const title = risk.querySelector("h4");
+    const summary = risk.querySelector("p");
+    if (title) title.textContent = snapshot.riskLevel === "high" ? "高风险告警" : snapshot.riskLevel === "medium" ? "需关注风险" : "状态稳定";
+    if (summary) summary.textContent = snapshot.riskSummary;
+    risk.querySelector(".ws63-risk-list")?.remove();
+    const list = document.createElement("ul");
+    list.className = "ws63-risk-list";
+    [...(snapshot.riskEvidence || []), ...(snapshot.riskSuggestions || [])].slice(0, 8).forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      list.appendChild(li);
+    });
+    risk.querySelector(".risk-content")?.appendChild(list);
+  }
+
+  function openConnectionDetail() {
+    const snapshot = window.__ws63MobileSnapshot;
+    if (!snapshot) return;
+    const modeLabel = snapshot.connectionMode === "cloud" ? "云服务器" : snapshot.connectionMode === "gateway" ? "星闪基站 Wi-Fi" : "小车直连";
+    const stateLabel = snapshot.activeTransportStatus === "online" ? "已连接" : "未连接";
+    const body = [
+      infoGrid([
+        ["连接方式", modeLabel],
+        ["连接状态", stateLabel],
+        ["云 API", snapshot.cloudApiStatus === "online" ? "已连接" : "不可达"],
+        ["实时遥测", snapshot.telemetryDetail],
+        ["信号强度", snapshot.wifiSignalLabel || snapshot.rssiLabel],
+        ["数据速度", snapshot.wifiSpeedLabel || "--"],
+        ["缓存条数", snapshot.cachedCountLabel],
+        ["设备", snapshot.deviceName]
+      ]),
+      '<div class="ws63-info-section">' + escapeHtml(snapshot.activeTransportDetail || snapshot.notice || "暂无连接详情。") + '</div>',
+      '<div class="ws63-info-section">手机通常只能同时连接一个 Wi-Fi。App 可在 Android 系统授权弹窗中请求连接设备热点；如果系统限制该能力，会退回系统 Wi-Fi 页面。</div>'
+    ].join("");
+    showInfoModal("连接详情", body);
+  }
+
+  function openAgentDetail() {
+    const snapshot = window.__ws63MobileSnapshot;
+    if (!snapshot) return;
+    const level = snapshot.riskLevel === "high" ? "高风险" : snapshot.riskLevel === "medium" ? "需关注" : "稳定";
+    const body = [
+      infoGrid([
+        ["风险等级", level],
+        ["分析来源", "手机已拉取历史数据"],
+        ["当前模式", snapshot.connectionModeLabel],
+        ["最新状态", snapshot.activeTransportLabel]
+      ]),
+      '<div class="ws63-info-section">' + escapeHtml(snapshot.riskSummary || snapshot.agentSummary) + '</div>',
+      '<div class="ws63-info-section"><strong>证据</strong>' + listHtml(snapshot.riskEvidence) + '</div>',
+      '<div class="ws63-info-section"><strong>建议</strong>' + listHtml(snapshot.riskSuggestions) + '</div>'
+    ].join("");
+    showInfoModal("Agent 分析详情", body);
+  }
+
+  function attachInfoBridge() {
+    if (document.body.dataset.ws63InfoBridge === "1") return;
+    document.body.dataset.ws63InfoBridge = "1";
+    document.body.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target?.closest?.(".topology-card")) {
+        event.preventDefault();
+        event.stopPropagation();
+        openConnectionDetail();
+        return;
+      }
+      if (target?.closest?.(".risk-card")) {
+        event.preventDefault();
+        event.stopPropagation();
+        openAgentDetail();
+      }
+    }, true);
+  }
+
   function applySnapshot(snapshot) {
     if (!snapshot) return;
     window.__ws63SeriesLabels = snapshot.seriesLabels;
     updateConnectionSwitch(snapshot.connectionMode);
     updateHistoryRange(snapshot.historyRange);
-    text("[data-od-id='app-title']", "WS63E 控制台");
+    text("[data-od-id='app-title']", "巡检控制平台");
+    updateTopStatus(snapshot);
+    updateTopology(snapshot);
+    updateRiskCard(snapshot);
+    window.setTimeout(() => text("[data-od-id='app-title']", "巡检控制平台"), 0);
     patchByText("dBm", snapshot.rssiLabel);
     patchByText("°C", snapshot.temperatureLabel);
     patchByText("%RH", snapshot.humidityLabel);
@@ -733,6 +1308,9 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     });
     attachControlBridge();
     attachHistoryRangeBridge();
+    attachThemeBridge();
+    attachWifiBridge();
+    attachInfoBridge();
     send("ready");
   });
 
@@ -826,6 +1404,17 @@ function parseTaskSteps(task: PatrolTask): Array<{ action?: string; speed?: numb
   }
 }
 
+function parseJsonList(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function formatTaskStep(step: { action?: string; speed?: number; durationMs?: number; duration_ms?: number }): string {
   const action = String(step.action ?? "forward");
   if (action === "stop") return "停止";
@@ -889,6 +1478,103 @@ function buildTaskTimeline(task?: PatrolTask): MobileTaskTimelineItem[] {
   ];
 }
 
+function reportRiskLevel(report?: AgentReport): "low" | "medium" | "high" {
+  return report?.riskLevel ?? report?.risk_level ?? "low";
+}
+
+function reportSuggestions(report?: AgentReport): string[] {
+  return parseJsonList(report?.suggestions ?? report?.suggestions_json)
+    .map((item) => String(item))
+    .filter(Boolean);
+}
+
+function reportEvidence(report?: AgentReport): string[] {
+  return parseJsonList(report?.evidence ?? report?.evidence_json)
+    .map((item) => {
+      if (typeof item === "object" && item !== null) {
+        const record = item as Record<string, unknown>;
+        return `${record.label ?? record.code ?? "证据"}: ${record.value ?? "--"}`;
+      }
+      return String(item);
+    })
+    .filter(Boolean);
+}
+
+function latestAgeMs(reading?: Reading): number {
+  if (!reading) return Number.POSITIVE_INFINITY;
+  const parsed = Date.parse(reading.recordedAt);
+  return Number.isFinite(parsed) ? Math.max(0, Date.now() - parsed) : Number.POSITIVE_INFINITY;
+}
+
+function ageLabel(ageMs: number): string {
+  if (!Number.isFinite(ageMs)) return "--";
+  if (ageMs < 60_000) return "不到 1 分钟";
+  if (ageMs < 60 * 60_000) return `${Math.round(ageMs / 60_000)} 分钟`;
+  return `${Math.round(ageMs / (60 * 60_000))} 小时`;
+}
+
+function telemetryFreshness(latest?: Reading | null): {
+  status: "live" | "stale" | "empty";
+  detail: string;
+  ageMs: number;
+} {
+  if (!latest) return { status: "empty", detail: "尚未收到实时遥测", ageMs: Number.POSITIVE_INFINITY };
+  const ageMs = latestAgeMs(latest);
+  if (ageMs < 90_000) return { status: "live", detail: "实时遥测正常", ageMs };
+  return { status: "stale", detail: `实时遥测延迟 ${ageLabel(ageMs)}`, ageMs };
+}
+
+function transportName(mode: ConnectionMode): string {
+  if (mode === "gateway") return "基站";
+  if (mode === "car-direct") return "小车";
+  return "云端";
+}
+
+function activeTransport(input: MobileOpenDesignSnapshotInput, telemetry: ReturnType<typeof telemetryFreshness>): {
+  status: "online" | "warning" | "offline";
+  label: string;
+  detail: string;
+} {
+  const hasError = Boolean(input.notice);
+  const fresh = telemetry.status === "live";
+  const name = transportName(input.connectionMode);
+  const connected = fresh && !hasError;
+  const shortLabel = `${name}${connected ? "已连接" : "未连接"}`;
+  const delayLabel = `${name}延迟较大`;
+  if (input.connectionMode === "cloud") {
+    const online = Boolean(input.cloudApiOnline);
+    if (online) {
+      return {
+        status: "online",
+        label: "云端已连接",
+        detail: `云端 HTTPS 正常。${telemetry.detail}。`
+      };
+    }
+    return {
+      status: "offline",
+      label: "云端未连接",
+      detail: input.notice || "云端 API 暂时不可达，历史曲线仍可来自手机本地缓存。"
+    };
+  }
+  if (input.connectionMode === "gateway") {
+    if (connected) return { status: "online", label: shortLabel, detail: "已通过基站 Wi-Fi/UDP 获取小车实时遥测。" };
+    if (telemetry.status !== "empty") return { status: "warning", label: delayLabel, detail: input.notice || "基站最近有数据但已超时，建议点击右上角 Wi-Fi 重新请求连接。" };
+    return { status: "offline", label: shortLabel, detail: input.notice || "未收到基站实时遥测，点击右上角 Wi-Fi 可请求连接基站热点。" };
+  }
+  if (connected) return { status: "online", label: shortLabel, detail: "已通过小车直连链路获取实时遥测。" };
+  if (telemetry.status !== "empty") return { status: "warning", label: delayLabel, detail: input.notice || "小车直连最近有数据但已超时，建议重新连接小车热点。" };
+  return { status: "offline", label: shortLabel, detail: input.notice || "未收到小车直连实时遥测，点击右上角 Wi-Fi 可请求连接小车热点。" };
+}
+
+function dataRateLabel(latest?: Reading | null, previous?: Reading | null): string {
+  if (!latest || !previous) return "--";
+  const latestAt = Date.parse(latest.recordedAt);
+  const previousAt = Date.parse(previous.recordedAt);
+  const deltaMs = latestAt - previousAt;
+  if (!Number.isFinite(deltaMs) || deltaMs <= 0 || deltaMs > 90_000) return "--";
+  return `${(1000 / deltaMs).toFixed(1)}Hz`;
+}
+
 function rangeDurationMs(range: MobileHistoryRange): number {
   if (range === "7D") return 7 * 24 * 60 * 60 * 1000;
   if (range === "24H") return 24 * 60 * 60 * 1000;
@@ -925,22 +1611,64 @@ function snapshotSeries(readings: Reading[], field: "rssi" | "temperature" | "hu
     field,
     from: range.from,
     to: range.to,
-    bucketMs: range.bucketMs
+    bucketMs: range.bucketMs,
+    granularity: historyRange === "1H" ? "minute" : historyRange === "24H" ? "hour" : "day"
   });
 }
 
+function overviewSeries(readings: Reading[], field: "rssi" | "temperature" | "humidity" | "lightness") {
+  const to = Date.now();
+  return buildTimeSeries({
+    readings,
+    field,
+    from: new Date(to - 60 * 60 * 1000).toISOString(),
+    to: new Date(to).toISOString(),
+    bucketMs: 60 * 1000,
+    granularity: "minute"
+  });
+}
+
+function detailSeries(readings: Reading[], granularity: SeriesGranularity, field: "rssi" | "temperature" | "humidity" | "lightness") {
+  const to = Date.now();
+  return buildTimeSeries({
+    readings,
+    field,
+    from: new Date(to - durationMsForGranularity(granularity)).toISOString(),
+    to: new Date(to).toISOString(),
+    bucketMs: bucketMsForGranularity(granularity),
+    granularity
+  });
+}
+
+function detailSeriesGroup(readings: Reading[], granularity: SeriesGranularity) {
+  const temperature = detailSeries(readings, granularity, "temperature");
+  return {
+    labels: temperature.map((point) => point.label),
+    rssi: detailSeries(readings, granularity, "rssi").map((point) => point.value),
+    temperature: temperature.map((point) => point.value),
+    humidity: detailSeries(readings, granularity, "humidity").map((point) => point.value),
+    lightness: detailSeries(readings, granularity, "lightness").map((point) => point.value)
+  };
+}
+
 export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInput): MobileOpenDesignSnapshot {
-  const latest = input.readings.at(-1);
+  const latest = input.realtimeReading ?? null;
+  const latestForHistory = input.readings.at(-1);
   const base = input.baseStations.find((item) => item.id === input.selectedDevice?.base_station_id) ?? input.baseStations[0];
-  const report = normalizeAgentReport(input.reports[0]);
+  const latestReport = input.reports[0];
+  const report = normalizeAgentReport(latestReport);
   const command = input.commands[0];
   const task = input.tasks[0];
-  const rssi = latest?.rssi ?? base?.last_rssi;
-  const cachedCount = latest?.cachedCount ?? base?.cached_count ?? 0;
-  const temperatureSeries = snapshotSeries(input.readings, "temperature", input.historyRange);
-  const humiditySeries = snapshotSeries(input.readings, "humidity", input.historyRange);
-  const lightnessSeries = snapshotSeries(input.readings, "lightness", input.historyRange);
-  const rssiSeries = snapshotSeries(input.readings, "rssi", input.historyRange);
+  const telemetry = telemetryFreshness(latest);
+  const hasBlockingRealtimeError = input.connectionMode !== "cloud" && Boolean(input.notice);
+  const hasRealtime = telemetry.status === "live" && !hasBlockingRealtimeError;
+  const rssi = hasRealtime ? latest?.rssi : undefined;
+  const cachedCount = latestForHistory?.cachedCount ?? base?.cached_count ?? 0;
+  const temperatureSeries = overviewSeries(input.readings, "temperature");
+  const humiditySeries = overviewSeries(input.readings, "humidity");
+  const lightnessSeries = overviewSeries(input.readings, "lightness");
+  const rssiSeries = overviewSeries(input.readings, "rssi");
+  const transport = activeTransport(input, telemetry);
 
   return {
     userLabel: input.user.displayName || input.user.username,
@@ -952,15 +1680,27 @@ export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInp
     baseStationStatus: statusLabel(base?.status ?? base?.network_status),
     rssiLabel: Number.isFinite(rssi) ? `${rssi} dBm` : "-- dBm",
     cachedCountLabel: `${cachedCount} 条`,
-    temperatureLabel: `${formatNumber(latest?.temperature)}°C`,
-    humidityLabel: `${formatNumber(latest?.humidity, 0)}%RH`,
-    lightnessLabel: `${formatNumber(latest?.lightness, 0)} lx`,
+    temperatureLabel: `${formatNumber(hasRealtime ? latest?.temperature : undefined)}°C`,
+    humidityLabel: `${formatNumber(hasRealtime ? latest?.humidity : undefined, 0)}%RH`,
+    lightnessLabel: `${formatNumber(hasRealtime ? latest?.lightness : undefined, 0)} lx`,
     commandStatus: command ? `${command.payload} / ${command.status}` : "--",
     taskStatus: task ? taskStatusLabel(task.status) : "--",
     taskCards: buildTaskCards(input.tasks),
     taskTimeline: buildTaskTimeline(task),
     agentSummary: report.summary,
     notice: input.notice,
+    cloudApiStatus: input.connectionMode === "cloud" && input.cloudApiOnline ? "online" : "offline",
+    telemetryStatus: telemetry.status,
+    telemetryDetail: telemetry.detail,
+    activeTransportStatus: transport.status,
+    activeTransportLabel: transport.label,
+    activeTransportDetail: transport.detail,
+    wifiSignalLabel: Number.isFinite(rssi) ? `${rssi}dBm` : "--dBm",
+    wifiSpeedLabel: hasRealtime ? dataRateLabel(latest, input.previousRealtimeReading) : "--",
+    riskLevel: reportRiskLevel(latestReport),
+    riskSummary: report.summary,
+    riskSuggestions: reportSuggestions(latestReport),
+    riskEvidence: reportEvidence(latestReport),
     connectionMode: input.connectionMode,
     historyRange: input.historyRange,
     seriesLabels: temperatureSeries.map((point) => point.label),
@@ -969,6 +1709,12 @@ export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInp
       temperature: temperatureSeries.map((point) => point.value),
       humidity: humiditySeries.map((point) => point.value),
       lightness: lightnessSeries.map((point) => point.value)
+    },
+    detailSeries: {
+      second: detailSeriesGroup(input.readings, "second"),
+      minute: detailSeriesGroup(input.readings, "minute"),
+      hour: detailSeriesGroup(input.readings, "hour"),
+      day: detailSeriesGroup(input.readings, "day")
     }
   };
 }

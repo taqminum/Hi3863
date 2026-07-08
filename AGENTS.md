@@ -70,6 +70,8 @@ Cloud deployment is handled by `deploy/deploy.ps1`. The public Web path is `http
 
 Prefer the user's real Android phone over an emulator unless the user explicitly asks for an emulator. The APK package is `icu.rxcccccc.ws63patrol`, and the debug APK output is `apps/web/android/app/build/outputs/apk/debug/app-debug.apk`.
 
+After every change that affects the APK, mobile Open Design integration, Android shell, mobile networking, mobile control logic, or mobile UI layout, rebuild or sync the APK as needed, reinstall it on the user's real phone through ADB, and launch it for verification before reporting completion. Do not rely only on desktop Web preview for mobile-facing changes.
+
 Typical Wi-Fi ADB flow:
 
 - `adb mdns services`
@@ -97,13 +99,15 @@ Do not commit `.env`, SQLite databases, runtime data, generated Android build ou
 
 Use GitNexus for repository analysis after updating `.gitnexusignore`. The intended index scope is product code and docs, not the full WS63 SDK/toolchain.
 
+Keep `AGENTS.md` and `.gitnexusignore` current together. When the active work branch, project structure, product boundaries, generated directories, local reference folders, or GitNexus indexing scope changes, update both files before running analysis or committing the related work. Do not let GitNexus index broad SDK/toolchain trees just because new files appeared; add targeted include/exclude rules instead.
+
 Recommended commands from the repository root:
 
 - `npx -y gitnexus status`
-- `npx -y gitnexus analyze --skip-agents-md --skip-skills --branch community/ws63e-env-gateway --default-branch main --max-file-size 512`
-- `npx -y gitnexus check`
+- `npx -y gitnexus analyze --skip-skills --name Hi3863 --branch community/ws63e-env-gateway --default-branch main --max-file-size 512`
+- `npx -y gitnexus check --cycles --repo Hi3863 --branch community/ws63e-env-gateway`
 
-Keep `.gitnexus/` ignored. If GitNexus analysis needs broader firmware context, add targeted paths to `.gitnexusignore` instead of indexing the whole SDK.
+Keep `.gitnexus/` ignored and uncommitted. Do not use `--skip-agents-md` for normal project-map refreshes; `AGENTS.md` is part of the repository operating context. If GitNexus analysis needs broader firmware context, add targeted paths to `.gitnexusignore` instead of indexing the whole SDK.
 
 ## Commit and PR Guidelines
 

@@ -6,7 +6,9 @@ import { startTelemetrySimulator } from "./simulator.ts";
 const config = getConfig();
 
 initDb();
-startTelemetrySimulator();
+if (config.simulator) {
+  startTelemetrySimulator();
+}
 
 createAppServer().listen(config.port, config.host, () => {
   console.log(`WS63 platform API listening on http://${config.host}:${config.port}`);

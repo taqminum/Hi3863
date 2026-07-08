@@ -108,6 +108,14 @@ export interface DashboardData {
   agentReports: AgentReport[];
 }
 
+export interface HealthData {
+  ok: boolean;
+  cloud?: {
+    host: string;
+    domain: string;
+  };
+}
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -172,6 +180,9 @@ async function requestText(path: string, token: string | null, options: RequestI
 }
 
 export const api = {
+  health() {
+    return request<HealthData>("/api/health", null);
+  },
   login(username: string, password: string) {
     return request<{ token: string; user: User }>("/api/auth/login", null, {
       method: "POST",

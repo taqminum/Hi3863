@@ -18,6 +18,7 @@ import { gatewayApi, gatewayTelemetryToReading, type GatewayTelemetrySample } fr
 import { historyCache } from "../historyCache";
 import { summarizeReadingsForAgent, type CachedReading, type ReadingSource } from "../historySeries";
 import { localCarApi } from "../localCarApi";
+import { connectLocalWifi } from "../mobileSystem";
 import type { ConnectionMode } from "../types";
 import { Login } from "../views/Login";
 import prototypeHtml from "../open-design/ws63e-inspection-app-full-8.html?raw";
@@ -124,6 +125,7 @@ export function MobileConsoleApp() {
   const [audits, setAudits] = useState<AuditLog[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("ws63-car-001");
   const [notice, setNotice] = useState("");
+  const [cloudApiOnline, setCloudApiOnline] = useState(false);
   const [historyRange, setHistoryRange] = useState<MobileHistoryRange>("1H");
   const [localSamples, setLocalSamples] = useState<LocalTelemetrySample[]>([]);
   const [gatewaySamples, setGatewaySamples] = useState<GatewayTelemetrySample[]>([]);
@@ -142,6 +144,7 @@ export function MobileConsoleApp() {
     localStorage.removeItem("ws63-token");
     localStorage.removeItem("ws63-user");
     setToken(null);
+    setCloudApiOnline(false);
     setUser(connectionMode === "cloud" ? null : mobileLocalUser);
   }, [connectionMode]);
 
@@ -200,8 +203,8 @@ export function MobileConsoleApp() {
         return;
       }
       if (error instanceof ApiError && error.status === 0 && connectionMode === "cloud") {
-        changeConnectionMode("gateway");
-        setNotice("云服务器暂时不可达，已尝试切换到星闪基站 Wi-Fi。");
+        setCloudApiOnline(false);
+        setNotice("云端 API 暂时不可达，请检查手机网络、域名或服务器状态。");
         return;
       }
       setNotice(error instanceof Error ? error.message : "请求失败");
@@ -210,6 +213,8 @@ export function MobileConsoleApp() {
 
   const refresh = useCallback(async (nextToken = token, nextDeviceId = selectedDeviceId) => {
     if (!nextToken || connectionMode !== "cloud" || nextToken.startsWith("local-demo:")) return;
+    const health = await api.health();
+    setCloudApiOnline(Boolean(health.ok));
     const dashboard = await api.dashboard(nextToken, nextDeviceId);
     const range = rangeForCache();
     const history = await api.readings(nextToken, nextDeviceId, {
@@ -289,6 +294,7 @@ export function MobileConsoleApp() {
   useEffect(() => {
     if (!token || connectionMode !== "cloud" || token.startsWith("local-demo:")) return;
     const events = new EventSource(`${apiBaseUrl()}/api/events?token=${encodeURIComponent(token)}`);
+    events.onopen = () => setCloudApiOnline(true);
     events.addEventListener("telemetry", (event) => {
       const payload = JSON.parse((event as MessageEvent).data).data as { readings: Reading[]; report: AgentReport };
       setReadings((current) => mergeReadingsById(current, payload.readings.filter((reading) => reading.deviceId === selectedDeviceId)).slice(-5000));
@@ -299,7 +305,7 @@ export function MobileConsoleApp() {
     events.addEventListener("command", () => void guarded(() => refresh()));
     events.addEventListener("patrol", () => void guarded(() => refresh()));
     events.addEventListener("device", () => void guarded(() => refresh()));
-    events.onerror = () => setNotice("实时连接暂时中断，正在等待自动重连");
+    events.onerror = () => setNotice("实时事件连接暂时中断，正在等待自动重连。");
     return () => events.close();
   }, [connectionMode, guarded, refresh, saveReadings, selectedDeviceId, token]);
 
@@ -313,13 +319,16 @@ export function MobileConsoleApp() {
       devices,
       baseStations,
       readings: activeReadings,
+      realtimeReading: liveReadings.at(-1) ?? null,
+      previousRealtimeReading: liveReadings.at(-2) ?? null,
       commands,
       tasks,
       reports,
       audits,
+      cloudApiOnline,
       notice
     });
-  }, [activeReadings, audits, baseStations, commands, connectionMode, devices, historyRange, notice, reports, selectedDevice, tasks, user]);
+  }, [activeReadings, audits, baseStations, cloudApiOnline, commands, connectionMode, devices, historyRange, liveReadings, notice, reports, selectedDevice, tasks, user]);
 
   const postSnapshot = useCallback(() => {
     if (!snapshot) return;
@@ -336,7 +345,6 @@ export function MobileConsoleApp() {
   }, [postSnapshot]);
 
   const handleBridgeMessage = useCallback(async (message: MobileOpenDesignToHostMessage) => {
-    if (!mobileSessionAllowsLocalControl(connectionMode, token)) return;
     if (message.type === "ready") {
       postSnapshot();
       return;
@@ -349,8 +357,25 @@ export function MobileConsoleApp() {
       changeConnectionMode(message.mode);
       return;
     }
+    if (message.type === "connect-network") {
+      if (connectionMode === "cloud") {
+        setNotice("云端模式使用手机当前互联网连接，无需切换到设备 Wi-Fi。");
+      } else {
+        const result = await connectLocalWifi(connectionMode).catch(() => ({ openedSettings: true }));
+        setNotice(result.openedSettings
+          ? "无法在 App 内直接连接该 Wi-Fi，已打开系统 Wi-Fi 页面。"
+          : connectionMode === "gateway"
+            ? "已请求连接星闪基站 Wi-Fi，请在系统弹窗中确认。"
+            : "已请求连接小车直连 Wi-Fi，请在系统弹窗中确认。");
+      }
+      return;
+    }
     if (message.type === "history-range") {
       setHistoryRange(message.range);
+      return;
+    }
+    if (!mobileSessionAllowsLocalControl(connectionMode, token)) {
+      setNotice("请先登录云端账号，或切换到基站/小车直连模式。");
       return;
     }
     await guarded(async () => {

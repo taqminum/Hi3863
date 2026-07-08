@@ -1,5 +1,6 @@
-# Keep GitNexus focused on project code and handoff docs instead of the full
-# WS63 SDK/toolchain tree. The generated index itself stays local.
+# Keep GitNexus focused on product code and handoff docs instead of the full
+# WS63 SDK/toolchain tree. Keep this file in sync with AGENTS.md whenever the
+# repository map, local-only folders, or GitNexus indexing scope changes.
 
 .git/
 .gitnexus/
@@ -7,6 +8,7 @@
 # Local assistant / editor state
 .claude/
 .codex/
+.playwright-mcp/
 .workbuddy/
 .worktrees/
 .vscode/
@@ -34,6 +36,7 @@ apps/server/data/
 *.bak
 
 # Screenshots, packaged artifacts, and generated binaries
+artifacts/
 *.png
 *.jpg
 *.jpeg
@@ -56,8 +59,9 @@ apps/server/data/
 # Local-only reference material
 fb_code/
 ws63_docs/
-鍙傝禌璧勬枡/
-浣滃搧绠€浠?md
+she_docs/
+参赛资料/
+作品简介.md
 
 # Narrow firmware indexing to the project application and gateway product.
 src/*

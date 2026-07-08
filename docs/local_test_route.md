@@ -4,7 +4,7 @@
 
 ## 1. 当前本地状态
 
-仓库已经同步到远端主线：
+仓库应先确认当前工作分支和远端状态：
 
 ```powershell
 git status --short --branch
@@ -13,7 +13,7 @@ git status --short --branch
 期望结果：
 
 ```text
-## main...origin/main
+## codex/project-collaboration...origin/codex/project-collaboration
 ```
 
 当前本地包含以下主要部分：
@@ -99,6 +99,23 @@ Web 页面：
 
 ```text
 https://www.rxcccccc.icu/ws63/
+```
+
+APK 云服务器模式使用：
+
+```text
+https://www.rxcccccc.icu/ws63-api
+```
+
+App 顶部状态需要分开判断：
+
+- `云端已连接` 只表示手机到云端 HTTPS API 已连通，可访问 `/api/health`、登录、拉取 dashboard、创建命令和巡检任务。
+- `实时遥测` 才表示基站或 PC 桥接程序持续上传了新的真实 telemetry。显示 `暂无遥测` 或 `遥测延迟 ...` 时，通常是 BearPi/PC 桥接没有继续上云，不代表 App 没连上云端。
+
+云端 API 连通性先用下面命令确认：
+
+```powershell
+curl.exe -i https://www.rxcccccc.icu/ws63-api/api/health
 ```
 
 基站接入协议：
@@ -197,6 +214,7 @@ npm run bridge:cloud -- --once
 - 终端打印一条 `[cloud-bridge] uploaded ... status=201`
 - Web 总览页出现新的环境读数
 - `GET /api/dashboard?deviceId=ws63-car-001` 能看到最新 reading
+- APK 显示 `云端已连接`，并在实时遥测区域显示最新读数或明确的遥测延迟
 
 ### 6.2 控制协议注意点
 
@@ -222,6 +240,17 @@ npm run bridge:patrol -- --cloud-base-url http://127.0.0.1:8787 --gateway-host 1
 ```
 
 完整摇杆和差速控制已接入云端命令模型、桥接格式、前端本地控制和小车端 `cmd=drive` 解析。硬件侧需要重新烧录小车固件后现场验证左右轮方向。
+
+### 6.3 App 显示未实时更新时的排障顺序
+
+如果 App 能登录但看起来没有连上云端，按下面顺序排：
+
+1. `curl.exe -i https://www.rxcccccc.icu/ws63-api/api/health`，确认云端 API 返回 `200 OK`。
+2. 在手机浏览器打开 `https://www.rxcccccc.icu/ws63/`，确认手机网络能访问公网域名。
+3. 运行 `$env:DEVICE_INGEST_KEY="<云端密钥>"` 后执行 `npm run bridge:cloud -- --once`，确认终端打印 `status=201`。
+4. 如果要持续刷新 App 实时数据，保持 `npm run bridge:cloud` 常驻运行，或把 BearPi 固件改为主动上云。
+5. 如果 App/Web 创建了控制命令但小车无动作，分别运行 `npm run bridge:control -- --once` 和 `npm run bridge:patrol -- --once` 验证下行桥接。
+6. 如果单次桥接失败，优先检查 BearPi 网关 IP 是否仍是 `192.168.5.118`、网关端口是否仍是 `8888`、`DEVICE_INGEST_KEY` 是否和云端 `.env` 一致。
 
 ## 7. 推荐联调顺序
 

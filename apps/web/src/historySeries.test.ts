@@ -45,6 +45,19 @@ test("buildTimeSeries keeps empty time buckets as null gaps", () => {
   assert.deepEqual(points.map((point) => point.count), [1, 0, 1, 0]);
 });
 
+test("second granularity labels include hour minute and second", () => {
+  const points = buildTimeSeries({
+    readings: [reading("r1", "2026-07-08T10:00:05.000Z", 25)],
+    field: "temperature",
+    from: "2026-07-08T10:00:05.000Z",
+    to: "2026-07-08T10:00:06.000Z",
+    bucketMs: 1000,
+    granularity: "second"
+  });
+
+  assert.match(points[0].label, /\d{2}:\d{2}:\d{2}/);
+});
+
 test("mergeCachedReadings deduplicates by reading id and prefers newer cache source", () => {
   const oldReading = reading("same", "2026-07-08T10:00:05.000Z", 25);
   const newerReading = { ...oldReading, temperature: 26, source: "gateway" as const, cachedAt: "2026-07-08T10:01:00.000Z" };

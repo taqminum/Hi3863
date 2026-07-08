@@ -3,6 +3,7 @@ import type { Reading } from "./api";
 export type ReadingSource = "cloud" | "gateway" | "car-direct";
 
 export type NumericReadingField = "temperature" | "humidity" | "lightness" | "rssi";
+export type SeriesGranularity = "second" | "minute" | "hour" | "day";
 
 export interface CachedReading extends Reading {
   source: ReadingSource;
@@ -57,6 +58,20 @@ function label(value: number): string {
   return new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 }
 
+function granularityLabel(value: number, granularity: SeriesGranularity): string {
+  const date = new Date(value);
+  if (granularity === "day") {
+    return date.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+  }
+  if (granularity === "hour") {
+    return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit" });
+  }
+  if (granularity === "minute") {
+    return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  }
+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 function roundOne(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -93,6 +108,7 @@ export function buildTimeSeries(input: {
   from: string;
   to: string;
   bucketMs: number;
+  granularity?: SeriesGranularity;
 }): TimeSeriesPoint[] {
   const start = timeValue(input.from);
   const end = timeValue(input.to);
@@ -119,11 +135,25 @@ export function buildTimeSeries(input: {
       : null;
     return {
       timestamp: iso(bucket.timestamp),
-      label: label(bucket.timestamp),
+      label: input.granularity ? granularityLabel(bucket.timestamp, input.granularity) : label(bucket.timestamp),
       value,
       count: bucket.values.length
     };
   });
+}
+
+export function bucketMsForGranularity(granularity: SeriesGranularity): number {
+  if (granularity === "day") return 24 * 60 * 60 * 1000;
+  if (granularity === "hour") return 60 * 60 * 1000;
+  if (granularity === "minute") return 60 * 1000;
+  return 1000;
+}
+
+export function durationMsForGranularity(granularity: SeriesGranularity): number {
+  if (granularity === "day") return 30 * 24 * 60 * 60 * 1000;
+  if (granularity === "hour") return 24 * 60 * 60 * 1000;
+  if (granularity === "minute") return 60 * 60 * 1000;
+  return 60 * 1000;
 }
 
 export function detectMissingIntervals(readings: Reading[], maxGapMs: number): MissingInterval[] {

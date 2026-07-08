@@ -1,6 +1,6 @@
 # WS63 巡检平台云端部署说明
 
-目标云服务器：`101.132.21.134`，域名：`rxcccccc.icu`。当前演示访问优先使用带证书的 `https://www.rxcccccc.icu/ws63/`。
+目标云服务器：`101.132.21.134`，域名：`rxcccccc.icu`。当前演示访问和 APK 默认联调入口使用带证书的 `https://www.rxcccccc.icu/ws63/`，不要把裸域 `rxcccccc.icu` 当作 App 默认 API 地址。
 
 ## 服务组成
 
@@ -71,15 +71,17 @@ PORT=8787
 JWT_SECRET=<随机强密钥>
 DEVICE_INGEST_KEY=<随机强密钥>
 DB_PATH=./data/ws63-platform.sqlite
+PUBLIC_ORIGIN=https://www.rxcccccc.icu
+SIMULATOR=0
 CLOUD_HOST=101.132.21.134
-CLOUD_DOMAIN=rxcccccc.icu
+CLOUD_DOMAIN=www.rxcccccc.icu
 OPENAI_AGENT_ENABLED=0
 OPENAI_BASE_URL=https://aigw.saurlax.com/v1
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-基站密钥和 OpenAI-compatible API Key 只保存在 `.env` 和交付说明中，不提交源码。未设置 `OPENAI_AGENT_ENABLED=1` 或 `OPENAI_API_KEY` 时，Agent 自动使用本地规则引擎兜底，不影响演示。
+基站密钥和 OpenAI-compatible API Key 只保存在 `.env` 和交付说明中，不提交源码。生产环境保持 `SIMULATOR=0`，只有本地演示需要自动模拟遥测时才临时设为 `SIMULATOR=1`。未设置 `OPENAI_AGENT_ENABLED=1` 或 `OPENAI_API_KEY` 时，Agent 自动使用本地规则引擎兜底，不影响演示。
 
 启用模型分析时，在云端 `/home/rxcccccc/ws63-platform/apps/server/.env` 中追加：
 
@@ -119,6 +121,28 @@ APK 内置链路选择：
 - 小车直连：`http://192.168.5.1:8080`，用于最后兜底实时遥测和遥控。
 
 三种链路写入同一份手机本地 IndexedDB 缓存。历史曲线严格按时间段渲染，未收到数据的时间桶保持空白，不补线。
+
+## App 云端状态判断
+
+APK 顶部状态现在拆成两层理解：
+
+- `云端已连接` 表示手机能访问 `https://www.rxcccccc.icu/ws63-api/api/health`，账号、命令队列、巡检任务和历史查询的 HTTPS API 是通的。
+- `实时遥测` 表示云端最近一次收到基站或桥接程序上传的真实小车 telemetry。显示 `暂无遥测` 或 `遥测延迟 ...` 时，不等同于 App 没连上云端，通常是 BearPi/PC 桥接程序没有继续向云端上传。
+
+现场排障时先验证 API，再验证遥测链路：
+
+```powershell
+curl.exe -i https://www.rxcccccc.icu/ws63-api/api/health
+
+$env:DEVICE_INGEST_KEY="<云端 apps/server/.env 中的密钥>"
+npm run bridge:cloud -- --once
+
+powershell -ExecutionPolicy Bypass -File deploy/smoke.ps1 `
+  -BaseUrl https://www.rxcccccc.icu/ws63-api `
+  -DeviceKey $env:DEVICE_INGEST_KEY
+```
+
+如果 `curl` 返回 `200 OK` 而 App 显示遥测延迟，优先检查 BearPi 网关 IP、PC 是否正在运行 `npm run bridge:cloud`、`DEVICE_INGEST_KEY` 是否和云端 `.env` 一致，以及云端审计日志中最新 `telemetry_ingest` 时间。
 
 ## 基站 API
 
@@ -178,6 +202,14 @@ npm run bridge:cloud -- `
 - Web 总览页刷新出最新环境数据
 - `GET /api/dashboard?deviceId=ws63-car-001` 返回最新 reading
 - 或继续执行 `deploy/smoke.ps1`
+
+如果命令可以在 App/Web 创建，但基站没有动作，说明云端 API 通了但桥接下行没有运行。用下面两条单次命令分别验证命令队列和巡检任务下行：
+
+```powershell
+$env:DEVICE_INGEST_KEY="<云端密钥>"
+npm run bridge:control -- --once
+npm run bridge:patrol -- --once
+```
 
 ## 控制与巡检任务桥接
 

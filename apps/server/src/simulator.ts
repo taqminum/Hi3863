@@ -4,10 +4,11 @@ import { broadcast } from "./realtime.ts";
 
 let timer: NodeJS.Timeout | null = null;
 let tick = 0;
+let runId = "";
 
-export function createSimulatorTelemetryPayload(sequence: number): BaseStationTelemetry {
+export function createSimulatorTelemetryPayload(sequence: number, simulatorRunId = ""): BaseStationTelemetry {
   return {
-    batchId: `sim-batch-${sequence}`,
+    batchId: simulatorRunId ? `sim-${simulatorRunId}-batch-${sequence}` : `sim-batch-${sequence}`,
     sequence,
     baseStationId: "sle-base-001",
     receivedAt: new Date().toISOString(),
@@ -30,13 +31,30 @@ export function createSimulatorTelemetryPayload(sequence: number): BaseStationTe
   };
 }
 
-export function startTelemetrySimulator(): void {
-  if (process.env.SIMULATOR === "0" || timer) return;
+export function isTelemetrySimulatorRunning(): boolean {
+  return timer !== null;
+}
+
+export function startTelemetrySimulator(options: { intervalMs?: number } = {}): boolean {
+  if (timer) return false;
+
+  runId = `${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
+  const intervalMs = options.intervalMs ?? Number(process.env.SIMULATOR_INTERVAL_MS ?? 3500);
 
   timer = setInterval(() => {
     tick += 1;
-    const result = ingestTelemetryBatch(createSimulatorTelemetryPayload(tick));
+    const result = ingestTelemetryBatch(createSimulatorTelemetryPayload(tick, runId));
     const report = createCurrentAgentReport("ws63-car-001");
     broadcast("telemetry", { readings: result.readings, report });
-  }, Number(process.env.SIMULATOR_INTERVAL_MS ?? 3500));
+  }, intervalMs);
+  timer.unref?.();
+  return true;
+}
+
+export function stopTelemetrySimulator(): void {
+  if (!timer) return;
+  clearInterval(timer);
+  timer = null;
+  tick = 0;
+  runId = "";
 }

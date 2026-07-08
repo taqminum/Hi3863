@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import type { DeviceRecord, PatrolTask, User } from "./api.ts";
+import type { DeviceRecord, PatrolTask, Reading, User } from "./api.ts";
 import { buildMobileOpenDesignSnapshot, buildMobileOpenDesignSrcDoc } from "./mobile/mobileOpenDesign.ts";
 
 test("injects mobile landscape patch without removing Open Design chart functions", () => {
@@ -72,6 +72,18 @@ test("opens detail chart modal with live snapshot scale instead of mock light ra
   assert.match(result, /function openLiveChartModal\(key\)/);
   assert.match(result, /window\.openChartModal = openLiveChartModal/);
   assert.match(result, /fitChartScale\(window\.__ws63DetailedChart, values\)/);
+  assert.match(result, /pointHitRadius: 18/);
+  assert.match(result, /function setChartReadout\(titleNode, label, value, unit\)/);
+});
+
+test("injects info modal for connection and agent details", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body><div class=\"cloud-status\"></div><div class=\"risk-card\"></div></body></html>");
+  assert.match(result, /function showInfoModal\(title, bodyHtml\)/);
+  assert.match(result, /function openConnectionDetail\(\)/);
+  assert.match(result, /function openAgentDetail\(\)/);
+  assert.match(result, /activeTransportDetail/);
+  assert.match(result, /\.topology-card/);
+  assert.match(result, /openConnectionDetail\(\)/);
 });
 
 test("injects connection mode controls for cloud gateway and car direct", () => {
@@ -80,6 +92,23 @@ test("injects connection mode controls for cloud gateway and car direct", () => 
   assert.match(result, /ws63-mode-gateway/);
   assert.match(result, /ws63-mode-car-direct/);
   assert.match(result, /send\("connection-mode", \{ mode \}\)/);
+  assert.match(result, /left: 50%/);
+  assert.match(result, /grid-template-columns: repeat\(3, minmax\(48px, 1fr\)\)/);
+  assert.match(result, /send\("connect-network"\)/);
+});
+
+test("right system actions are explicit circular buttons", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body><div class=\"sys-status\"><button id=\"theme-toggle\"></button><i data-lucide=\"wifi\"></i></div></body></html>");
+  assert.match(result, /ws63-wifi-action/);
+  assert.match(result, /ws63-wifi-meta/);
+  assert.match(result, /width: 36px !important/);
+  assert.match(result, /send\("connect-network"\)/);
+});
+
+test("theme bridge toggles Open Design light theme class", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body><button id=\"theme-toggle\"></button></body></html>");
+  assert.match(result, /attachThemeBridge/);
+  assert.match(result, /classList\.toggle\("light-theme"\)/);
 });
 
 test("bridge keeps chart null values as gaps", () => {
@@ -180,7 +209,156 @@ test("builds readable fallback snapshot when telemetry is empty", () => {
   assert.equal(snapshot.deviceName, "WS63E-巡检车-01");
   assert.equal(snapshot.historyRange, "1H");
   assert.equal(snapshot.temperatureLabel, "--°C");
-  assert.equal(snapshot.series.temperature.length, 24);
+  assert.equal(snapshot.series.temperature.length, 60);
+  assert.equal(snapshot.detailSeries.second.temperature.length, 60);
+  assert.equal(snapshot.detailSeries.minute.temperature.length, 60);
+  assert.equal(snapshot.activeTransportStatus, "offline");
+  assert.equal(snapshot.activeTransportLabel, "云端未连接");
+});
+
+test("uses cache for charts but not for disconnected realtime overview values", () => {
+  const user: User = { id: "u1", username: "admin", displayName: "admin", role: "admin" };
+  const recordedAt = new Date(Date.now() - 30_000).toISOString();
+  const cachedReading = {
+    id: "cached",
+    deviceId: "ws63-car-001",
+    baseStationId: "sle-base-001",
+    temperature: 31,
+    humidity: 60,
+    lightness: 24,
+    gear: "M",
+    direction: "stop",
+    status: "idle",
+    linkMode: "sle",
+    rssi: -45,
+    cachedCount: 0,
+    recordedAt
+  };
+  const snapshot = buildMobileOpenDesignSnapshot({
+    user,
+    connectionMode: "car-direct",
+    historyRange: "1H",
+    devices: [],
+    baseStations: [],
+    readings: [cachedReading],
+    realtimeReading: null,
+    commands: [],
+    tasks: [],
+    reports: [],
+    audits: [],
+    notice: "小车直连连接失败"
+  });
+
+  assert.equal(snapshot.rssiLabel, "-- dBm");
+  assert.equal(snapshot.temperatureLabel, "--°C");
+  assert.equal(snapshot.series.temperature.some((value) => value === 31), true);
+});
+
+test("shows cloud API connected separately when telemetry is empty", () => {
+  const user: User = { id: "u1", username: "admin", displayName: "admin", role: "admin" };
+  const snapshot = buildMobileOpenDesignSnapshot({
+    user,
+    connectionMode: "cloud",
+    historyRange: "1H",
+    devices: [],
+    baseStations: [],
+    readings: [],
+    realtimeReading: null,
+    commands: [],
+    tasks: [],
+    reports: [],
+    audits: [],
+    cloudApiOnline: true,
+    notice: ""
+  });
+
+  assert.equal(snapshot.cloudApiStatus, "online");
+  assert.equal(snapshot.activeTransportStatus, "online");
+  assert.equal(snapshot.activeTransportLabel, "云端已连接");
+  assert.equal(snapshot.telemetryStatus, "empty");
+  assert.match(snapshot.telemetryDetail, /尚未收到实时遥测/);
+  assert.match(snapshot.temperatureLabel, /^--/);
+});
+
+test("keeps cloud connected while stale telemetry is reported separately", () => {
+  const user: User = { id: "u1", username: "admin", displayName: "admin", role: "admin" };
+  const staleReading: Reading = {
+    id: "stale",
+    deviceId: "ws63-car-001",
+    baseStationId: "sle-base-001",
+    temperature: 29,
+    humidity: 61,
+    lightness: 500,
+    gear: "D",
+    direction: "forward",
+    status: "patrolling",
+    linkMode: "sle",
+    rssi: -52,
+    cachedCount: 0,
+    recordedAt: new Date(Date.now() - 10 * 60_000).toISOString()
+  };
+  const snapshot = buildMobileOpenDesignSnapshot({
+    user,
+    connectionMode: "cloud",
+    historyRange: "1H",
+    devices: [],
+    baseStations: [],
+    readings: [staleReading],
+    realtimeReading: staleReading,
+    commands: [],
+    tasks: [],
+    reports: [],
+    audits: [],
+    cloudApiOnline: true,
+    notice: ""
+  });
+
+  assert.equal(snapshot.cloudApiStatus, "online");
+  assert.equal(snapshot.activeTransportStatus, "online");
+  assert.equal(snapshot.activeTransportLabel, "云端已连接");
+  assert.equal(snapshot.telemetryStatus, "stale");
+  assert.match(snapshot.telemetryDetail, /实时遥测延迟/);
+  assert.match(snapshot.temperatureLabel, /^--/);
+});
+
+test("shows live telemetry when cloud reading is fresh", () => {
+  const user: User = { id: "u1", username: "admin", displayName: "admin", role: "admin" };
+  const liveReading: Reading = {
+    id: "live",
+    deviceId: "ws63-car-001",
+    baseStationId: "sle-base-001",
+    temperature: 25.4,
+    humidity: 62,
+    lightness: 800,
+    gear: "D",
+    direction: "forward",
+    status: "patrolling",
+    linkMode: "sle",
+    rssi: -45,
+    cachedCount: 1,
+    recordedAt: new Date(Date.now() - 20_000).toISOString()
+  };
+  const snapshot = buildMobileOpenDesignSnapshot({
+    user,
+    connectionMode: "cloud",
+    historyRange: "1H",
+    devices: [],
+    baseStations: [],
+    readings: [liveReading],
+    realtimeReading: liveReading,
+    commands: [],
+    tasks: [],
+    reports: [],
+    audits: [],
+    cloudApiOnline: true,
+    notice: ""
+  });
+
+  assert.equal(snapshot.cloudApiStatus, "online");
+  assert.equal(snapshot.telemetryStatus, "live");
+  assert.equal(snapshot.telemetryDetail, "实时遥测正常");
+  assert.equal(snapshot.rssiLabel, "-45 dBm");
+  assert.equal(snapshot.temperatureLabel, "25.4°C");
 });
 
 test("snapshot exposes real patrol task cards and route steps for the mobile tasks tab", () => {

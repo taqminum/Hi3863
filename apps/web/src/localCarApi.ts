@@ -9,7 +9,7 @@ import {
   type LocalTelemetrySample,
   type RawCarTelemetry
 } from "./carProtocol";
-import { Capacitor, registerPlugin } from "@capacitor/core";
+import { registerPlugin } from "@capacitor/core";
 
 interface Ws63UdpPlugin {
   send(options: { host: string; port: number; message: string; timeoutMs?: number }): Promise<{ response?: string }>;
@@ -44,7 +44,7 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 }
 
 function shouldUseUdpGateway(): boolean {
-  return Capacitor.isNativePlatform();
+  return false;
 }
 
 async function sendUdp(message: string, timeoutMs = 1200): Promise<string | undefined> {
