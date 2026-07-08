@@ -7,7 +7,7 @@ board_build.mcu=ws63
 platform=cfbb
 json_path=ws63.json
 project_type=CFBB
-project_new_type=commonProject
+project_new_type=commonProjectgao
 target=WS63-LITEOS-APP
 check_empty_type=
 
