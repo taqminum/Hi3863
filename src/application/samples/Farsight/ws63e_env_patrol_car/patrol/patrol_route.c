@@ -39,10 +39,13 @@ void patrol_route_start(void)
 
 void patrol_route_stop(void)
 {
+    uint8_t was_enabled = g_enabled;
     g_enabled = 0;
     g_step_index = 0;
     g_step_elapsed = 0;
-    (void)car_motor_stop();
+    if (was_enabled != 0) {
+        (void)car_motor_stop();
+    }
     printf("[car] timed patrol route stop\r\n");
 }
 

@@ -12,6 +12,7 @@
 #include "lwip/sockets.h"
 #include "lwip/netif.h"
 #include "lwip/nettool/misc.h"
+#include "string.h"
 #include "sle_uart_server.h"
 #include "telemetry_cache.h"
 #include "udp_bridge.h"
@@ -19,6 +20,15 @@
 #define UDP_RECV_BUF_SIZE   256
 #define UDP_TELEM_BUF_SIZE  512
 #define UDP_BRIDGE_LOG      "[udp_bridge]"
+
+static int udp_bridge_is_query(const char *payload)
+{
+    if (payload == NULL) {
+        return 0;
+    }
+    return (strcmp(payload, "GET") == 0 || strcmp(payload, "get") == 0 ||
+        strcmp(payload, "data") == 0 || strcmp(payload, "DATA") == 0);
+}
 
 int udp_bridge_init(int *out_sock_fd)
 {
@@ -66,8 +76,10 @@ void udp_bridge_handle_packet(int sock_fd)
     osal_printk("%s rx from %s:%d => %s\r\n", UDP_BRIDGE_LOG,
         inet_ntoa(src_addr.sin_addr), ntohs(src_addr.sin_port), recv_buf);
 
-    /* Forward command to car over SLE */
-    if (sle_uart_client_is_connected() != 0) {
+    /* Forward only control commands to car over SLE. Telemetry queries stay on the gateway. */
+    if (udp_bridge_is_query(recv_buf)) {
+        osal_printk("%s telemetry query, skip SLE forward\r\n", UDP_BRIDGE_LOG);
+    } else if (sle_uart_client_is_connected() != 0) {
         uint16_t conn_id = get_connect_id();
         osal_printk("%s SLE conn_hdl=%u pair_hdl=%u, forwarding %d bytes\r\n",
             UDP_BRIDGE_LOG, conn_id, sle_uart_client_is_connected(), n);

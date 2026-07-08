@@ -15,6 +15,7 @@
 #include "sle_uart_server.h"
 #include "sle_uart_server_adv.h"
 #include "wifi_softap.h"
+#include "wifi_router_sta.h"
 #include "telemetry_cache.h"
 #include "udp_bridge.h"
 
@@ -132,10 +133,13 @@ static void *udp_bridge_task(const char *arg)
     unused(arg);
     int sock_fd = -1;
 
-    /* Initialise Wi-Fi SoftAP first */
-    if (wifi_softap_init() != 0) {
-        osal_printk("%s Wi-Fi SoftAP init failed\r\n", GATEWAY_LOG);
-        return NULL;
+    /* Prefer router STA mode. Fall back to SoftAP for local recovery when credentials are not configured. */
+    if (wifi_router_sta_init() != 0) {
+        osal_printk("%s Wi-Fi STA init failed or not configured, fallback to SoftAP\r\n", GATEWAY_LOG);
+        if (wifi_softap_init() != 0) {
+            osal_printk("%s Wi-Fi SoftAP init failed\r\n", GATEWAY_LOG);
+            return NULL;
+        }
     }
 
     /* Start UDP bridge */

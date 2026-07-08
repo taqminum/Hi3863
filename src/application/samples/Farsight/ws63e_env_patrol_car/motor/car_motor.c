@@ -22,6 +22,7 @@ static uint8_t g_motor_addr = CAR_I2C_ADDR_WHEEL_PWM;
 static uint8_t g_motor_available = 0;
 static uint8_t g_manual_watchdog_active = 0;
 static uint32_t g_manual_watchdog_remaining_ms = 0;
+static uint8_t g_manual_speed_percent = 0;
 static car_motion_t g_current_motion = CAR_MOTION_STOP;
 
 typedef struct {
@@ -217,19 +218,38 @@ int car_motor_command(const car_motor_cmd_t *cmd)
 
 int car_motor_manual_command(const car_motor_cmd_t *cmd)
 {
+    if (cmd == 0) {
+        return -1;
+    }
+
+    uint32_t watchdog_ms = cmd->duration_ms;
+    if (watchdog_ms == 0U && cmd->motion != CAR_MOTION_STOP) {
+        watchdog_ms = CAR_MOTOR_MANUAL_CMD_TIMEOUT_MS;
+    }
+
+    if (g_manual_watchdog_active != 0 && cmd->motion != CAR_MOTION_STOP &&
+        cmd->motion == g_current_motion && cmd->speed_percent == g_manual_speed_percent) {
+        g_manual_watchdog_remaining_ms = watchdog_ms;
+        printf("[car] motor manual refresh motion=%u speed=%u duration=%u\r\n",
+            cmd->motion, cmd->speed_percent, (unsigned int)watchdog_ms);
+        return 0;
+    }
+
     int ret = car_motor_command(cmd);
-    if (ret != 0 || cmd == 0) {
+    if (ret != 0) {
         return ret;
     }
 
     if (cmd->motion == CAR_MOTION_STOP) {
         g_manual_watchdog_active = 0;
         g_manual_watchdog_remaining_ms = 0;
+        g_manual_speed_percent = 0;
         return ret;
     }
 
     g_manual_watchdog_active = 1;
-    g_manual_watchdog_remaining_ms = CAR_MOTOR_MANUAL_CMD_TIMEOUT_MS;
+    g_manual_watchdog_remaining_ms = watchdog_ms;
+    g_manual_speed_percent = cmd->speed_percent;
     return ret;
 }
 
