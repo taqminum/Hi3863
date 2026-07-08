@@ -29,7 +29,7 @@ test("base station pull leases pending commands", async () => {
   }
 });
 
-test("joystick drive command is downgraded to current car motion payload", async () => {
+test("joystick drive command keeps differential wheel payload", async () => {
   const app = await createTestApp();
   try {
     const token = await app.login("operator", "operator123");
@@ -55,8 +55,9 @@ test("joystick drive command is downgraded to current car motion payload", async
     assert.equal(pendingBody.commands[0].action, "drive");
     assert.equal(pendingBody.commands[0].speed, 0);
     assert.deepEqual(JSON.parse(pendingBody.commands[0].payload), {
-      cmd: "right",
-      speed: 70,
+      cmd: "drive",
+      left: 70,
+      right: 0,
       duration_ms: 350
     });
   } finally {
@@ -101,7 +102,7 @@ test("new drive command cancels stale pending drive command for same device", as
     assert.equal(pending.status, 200);
     const body = await pending.json() as { commands: Array<{ payload: string }> };
     assert.deepEqual(body.commands.map((command) => JSON.parse(command.payload)), [
-      { cmd: "forward", speed: 60, duration_ms: 350 }
+      { cmd: "drive", left: 60, right: 60, duration_ms: 350 }
     ]);
   } finally {
     await app.close();

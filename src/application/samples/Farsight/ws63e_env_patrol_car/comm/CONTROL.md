@@ -6,14 +6,17 @@ extension.
 
 ```json
 {"cmd":"forward","speed":35,"duration_ms":600}
+{"cmd":"drive","left":70,"right":0,"duration_ms":350}
 ```
 
 ## Fields
 
 | Field | Values | Meaning |
 | --- | --- | --- |
-| `cmd` | `stop`, `forward`, `backward`, `left`, `right` | L9110S motion command. |
+| `cmd` | `stop`, `forward`, `backward`, `left`, `right`, `drive` | L9110S motion command. |
 | `speed` | `0` to `100` | Open-loop PWM percentage. |
+| `left` | `-100` to `100` | Left wheel open-loop percentage for `drive`. |
+| `right` | `-100` to `100` | Right wheel open-loop percentage for `drive`. |
 | `duration_ms` | `0` to `3000` | Safety-bounded command duration. |
 
 Preset timed patrol uses the same endpoint with:
@@ -58,8 +61,8 @@ Connection:
 Recommended app behavior:
 
 - Poll telemetry with `GET /api/data` about once per second.
-- On button press, send `POST /api/control` with `forward`, `backward`, `left`,
-  or `right`.
+- On joystick move, send `POST /api/control` with `cmd=drive`, `left`, `right`
+  and `duration_ms`.
 - While a direction button is held, repeat the same command every 300 to 500 ms.
 - On button release, immediately send `{"cmd":"stop"}`.
 - Use `auto_start` and `auto_stop` only for the preset open-loop patrol route.

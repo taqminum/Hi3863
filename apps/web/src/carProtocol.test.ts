@@ -25,7 +25,7 @@ test("uses BearPi UDP gateway as the default local transport", () => {
   assert.equal(CAR_LOCAL_UDP_PORT, 8888);
 });
 
-test("maps local drive payloads to current BearPi UDP commands", () => {
+test("maps drive payloads to legacy command when compatibility is needed", () => {
   assert.equal(buildUdpGatewayCommand({ cmd: "drive", left: 50, right: 50, duration_ms: 350 }), "forward");
   assert.equal(buildUdpGatewayCommand({ cmd: "drive", left: -50, right: -50, duration_ms: 350 }), "backward");
   assert.equal(buildUdpGatewayCommand({ cmd: "drive", left: -40, right: 40, duration_ms: 350 }), "left");
@@ -34,14 +34,14 @@ test("maps local drive payloads to current BearPi UDP commands", () => {
   assert.equal(buildUdpGatewayCommand({ cmd: "stop", speed: 0, duration_ms: 0 }), "stop");
 });
 
-test("builds longer-lived JSON commands for smooth BearPi UDP control", () => {
+test("builds differential JSON commands for smooth BearPi UDP control", () => {
   assert.equal(
     buildUdpGatewayControlMessage({ cmd: "drive", left: 50, right: 50, duration_ms: 350 }),
-    JSON.stringify({ cmd: "forward", speed: 50, duration_ms: 2200 })
+    JSON.stringify({ cmd: "drive", left: 50, right: 50, duration_ms: 2200 })
   );
   assert.equal(
     buildUdpGatewayControlMessage({ cmd: "drive", left: 40, right: -40, duration_ms: 350 }),
-    JSON.stringify({ cmd: "right", speed: 40, duration_ms: 2200 })
+    JSON.stringify({ cmd: "drive", left: 40, right: -40, duration_ms: 2200 })
   );
   assert.equal(
     buildUdpGatewayControlMessage({ cmd: "stop", speed: 0, duration_ms: 0 }),
@@ -52,8 +52,10 @@ test("builds longer-lived JSON commands for smooth BearPi UDP control", () => {
 test("joystick maps to bounded differential wheel output", () => {
   assert.deepEqual(joystickToDifferential({ x: 0, y: 0 }, { maxPercent: 70 }), { left: 0, right: 0 });
   assert.deepEqual(joystickToDifferential({ x: 0, y: 1 }, { maxPercent: 70 }), { left: 70, right: 70 });
-  assert.deepEqual(joystickToDifferential({ x: 0.5, y: 0.5 }, { maxPercent: 70 }), { left: 70, right: 0 });
-  assert.deepEqual(joystickToDifferential({ x: -0.5, y: 0.5 }, { maxPercent: 70 }), { left: 0, right: 70 });
+  assert.deepEqual(joystickToDifferential({ x: 0.5, y: 0.5 }, { maxPercent: 70 }), { left: 0, right: 70 });
+  assert.deepEqual(joystickToDifferential({ x: -0.5, y: 0.5 }, { maxPercent: 70 }), { left: 70, right: 0 });
+  assert.deepEqual(joystickToDifferential({ x: -0.5, y: -0.5 }, { maxPercent: 70 }), { left: -70, right: 0 });
+  assert.deepEqual(joystickToDifferential({ x: 0.5, y: -0.5 }, { maxPercent: 70 }), { left: 0, right: -70 });
   assert.deepEqual(joystickToDifferential({ x: 1, y: 0 }, { maxPercent: 70 }), { left: 70, right: -70 });
 });
 
@@ -84,7 +86,7 @@ test("downgrades wheel output to current firmware compatible payload", () => {
   });
 });
 
-test("builds future drive payload", () => {
+test("builds differential drive payload", () => {
   assert.deepEqual(buildDrivePayload({ left: 72, right: -4 }, 900), { cmd: "drive", left: 72, right: -4, duration_ms: 900 });
 });
 

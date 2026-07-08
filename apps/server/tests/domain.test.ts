@@ -40,7 +40,7 @@ test("normalizes base station telemetry into one reading per sensor packet", () 
   assert.equal(readings[0].cachedCount, 2);
 });
 
-test("maps web control commands to current car HTTP payloads", () => {
+test("maps web control commands to car JSON payloads", () => {
   assert.deepEqual(JSON.parse(toCarControlPayload({ action: "forward", speed: 60 })), {
     cmd: "forward",
     speed: 60,
@@ -57,8 +57,9 @@ test("maps web control commands to current car HTTP payloads", () => {
     duration_ms: 0
   });
   assert.deepEqual(JSON.parse(toCarControlPayload({ action: "drive", speed: 0, left: 70, right: 0, durationMs: 350 })), {
-    cmd: "right",
-    speed: 70,
+    cmd: "drive",
+    left: 70,
+    right: 0,
     duration_ms: 350
   });
 });

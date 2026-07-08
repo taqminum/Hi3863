@@ -110,3 +110,83 @@ apps/web/android/app/build/outputs/apk/debug/app-debug.apk
 ```http
 X-Device-Key: <DEVICE_INGEST_KEY>
 ```
+
+## Telemetry 桥接
+
+如果 BearPi 固件暂时还没有主动上云，可以先在电脑上运行一个轻量桥接程序，把 BearPi UDP 网关中的最新 telemetry 转发到云端 ingest API。
+
+单次验证：
+
+```powershell
+$env:DEVICE_INGEST_KEY="<云端密钥>"
+npm run bridge:cloud -- --once
+```
+
+持续轮询上传：
+
+```powershell
+$env:DEVICE_INGEST_KEY="<云端密钥>"
+npm run bridge:cloud
+```
+
+默认参数：
+
+- BearPi UDP 网关：`192.168.6.1:8888`
+- 云端 API：`https://www.rxcccccc.icu/ws63-api`
+- 基站 ID：`sle-base-001`
+- 小车 ID：`ws63-car-001`
+
+常见调试覆盖：
+
+```powershell
+npm run bridge:cloud -- `
+  --gateway-host 192.168.6.1 `
+  --gateway-port 8888 `
+  --cloud-base-url http://127.0.0.1:8787 `
+  --base-station-id sle-base-001 `
+  --device-id ws63-car-001 `
+  --once
+```
+
+成功时会打印上传日志，包含 `seq` 和 HTTP 状态码。验证方式：
+
+- Web 总览页刷新出最新环境数据
+- `GET /api/dashboard?deviceId=ws63-car-001` 返回最新 reading
+- 或继续执行 `deploy/smoke.ps1`
+
+## 控制与巡检任务桥接
+
+如果 BearPi 当前作为 STA 接入路由器，例如串口日志显示：
+
+```text
+[wifi_sta] DHCP success ip=192.168.5.118
+```
+
+则桥接目标需要使用 DHCP 地址，而不是默认 SoftAP 地址 `192.168.6.1`。
+
+本地单次控制指令桥接：
+
+```powershell
+$env:DEVICE_INGEST_KEY="dev-base-station-key"
+npm run bridge:control -- `
+  --cloud-base-url http://127.0.0.1:8787 `
+  --gateway-host 192.168.5.118 `
+  --gateway-port 8888 `
+  --timeout-ms 3000 `
+  --once
+```
+
+本地单次巡检任务桥接：
+
+```powershell
+$env:DEVICE_INGEST_KEY="dev-base-station-key"
+npm run bridge:patrol -- `
+  --cloud-base-url http://127.0.0.1:8787 `
+  --gateway-host 192.168.5.118 `
+  --gateway-port 8888 `
+  --timeout-ms 3000 `
+  --step-delay-ms 100 `
+  --once
+```
+
+`bridge:patrol` 会拉取 `/api/base-stations/:id/patrol-tasks/pending`，将 `steps_json` 中的 `action/speed/durationMs` 逐条转为小车 UDP 控制 payload，执行前回写 `running`，全部发送成功后回写 `completed`，失败时回写 `failed` 和错误信息。

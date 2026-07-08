@@ -246,7 +246,8 @@ static void car_sle_apply_rx_text(const uint8_t *data, uint16_t len)
         patrol_route_stop();
         return;
     }
-    if (strstr(text, "forward") != NULL || strstr(text, "backward") != NULL ||
+    if (strstr(text, "drive") != NULL ||
+        strstr(text, "forward") != NULL || strstr(text, "backward") != NULL ||
         strstr(text, "left") != NULL || strstr(text, "right") != NULL || strstr(text, "stop") != NULL) {
         patrol_route_stop();
         (void)control_command_apply(text);

@@ -97,9 +97,10 @@ export function joystickToDifferential(
   const magnitude = Math.hypot(x, y);
   if (magnitude < deadZone) return { left: 0, right: 0 };
 
+  const turn = y > 0 ? -x : x;
   return {
-    left: toPercent(clamp(y + x, -1, 1), maxPercent),
-    right: toPercent(clamp(y - x, -1, 1), maxPercent)
+    left: toPercent(clamp(y + turn, -1, 1), maxPercent),
+    right: toPercent(clamp(y - turn, -1, 1), maxPercent)
   };
 }
 
@@ -166,6 +167,15 @@ export function buildUdpGatewayCommand(payload: CompatControlPayload | DrivePayl
 }
 
 export function buildUdpGatewayControlMessage(payload: CompatControlPayload | DrivePayload): string {
+  if (payload.cmd === "drive") {
+    return JSON.stringify({
+      cmd: "drive",
+      left: Math.round(clamp(payload.left, -100, 100)),
+      right: Math.round(clamp(payload.right, -100, 100)),
+      duration_ms: CAR_LOCAL_UDP_CONTROL_DURATION_MS
+    });
+  }
+
   const command = buildUdpGatewayCommand(payload);
   if (command === "auto_start" || command === "auto_stop") {
     return JSON.stringify({ cmd: command });
@@ -173,9 +183,7 @@ export function buildUdpGatewayControlMessage(payload: CompatControlPayload | Dr
   if (command === "stop") {
     return JSON.stringify({ cmd: "stop", speed: 0, duration_ms: 0 });
   }
-  const speed = payload.cmd === "drive"
-    ? Math.max(CAR_LOCAL_UDP_CONTROL_SPEED, wheelOutputSpeed(payload))
-    : Math.max(CAR_LOCAL_UDP_CONTROL_SPEED, payload.speed ?? CAR_LOCAL_UDP_CONTROL_SPEED);
+  const speed = Math.max(CAR_LOCAL_UDP_CONTROL_SPEED, payload.speed ?? CAR_LOCAL_UDP_CONTROL_SPEED);
   return JSON.stringify({
     cmd: command,
     speed,

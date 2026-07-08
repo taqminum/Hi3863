@@ -62,7 +62,7 @@ curl https://rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/commands/pendi
       "base_station_id": "sle-base-001",
       "action": "drive",
       "speed": 0,
-      "payload": "{\"cmd\":\"right\",\"speed\":70,\"duration_ms\":350}",
+      "payload": "{\"cmd\":\"drive\",\"left\":70,\"right\":0,\"duration_ms\":350}",
       "status": "pulled",
       "created_at": "2026-07-08T10:00:00.000Z",
       "expires_at": "2026-07-08T10:00:02.000Z"
@@ -71,7 +71,7 @@ curl https://rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/commands/pendi
 }
 ```
 
-基站只需要把 `payload` 原样通过 SLE 发给小车。当前 `payload` 是小车现有固件可解析的 JSON。
+基站只需要把 `payload` 原样通过 SLE 发给小车。当前 `payload` 是小车固件可解析的 JSON。
 
 ## 控制 payload
 
@@ -83,22 +83,17 @@ curl https://rxcccccc.icu/ws63-api/api/base-stations/sle-base-001/commands/pendi
 {"cmd":"left","speed":50,"duration_ms":350}
 {"cmd":"right","speed":50,"duration_ms":350}
 {"cmd":"stop","speed":0,"duration_ms":0}
+{"cmd":"drive","left":70,"right":0,"duration_ms":350}
 {"cmd":"auto_start"}
 {"cmd":"auto_stop"}
 ```
 
 队列规则：
 
-- APK 摇杆输入在云端 action 中仍记为 `drive`，但 `payload` 会降级为当前小车可执行 JSON。
+- APK 摇杆输入在云端 action 中记为 `drive`，`payload` 保留左右轮差速 JSON。
 - `drive` 命令有效期约 `2s`，过期后不会再被基站拉取。
 - 新 `drive` 会取消同一小车同一基站尚未完成的旧 `drive`，避免摇杆命令堆积。
 - `stop` 会取消旧 `drive` 并保留自身，确保松手停车优先。
-
-未来如果小车端支持差速协议，可以切换为：
-
-```json
-{"cmd":"drive","left":70,"right":0,"duration_ms":350}
-```
 
 ## 回执命令状态
 

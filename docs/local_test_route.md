@@ -40,7 +40,7 @@ npm run build
 当前已验证结果：
 
 - `npm ci` 通过，`npm audit` 未发现漏洞。
-- `npm run test` 通过：server 25 个测试通过，Web TypeScript 检查通过。
+- `npm run test` 通过：server 测试通过，Web TypeScript 检查通过。
 - `npm run build` 通过：server TypeScript 构建通过，Web Vite 生产构建通过。
 
 ## 3. 本地 API smoke 路线
@@ -68,6 +68,9 @@ powershell -ExecutionPolicy Bypass -File deploy/smoke.ps1 `
 - Web 创建命令
 - 基站拉取 pending command
 - 基站回执 command ack
+- Web 创建巡检任务
+- 基站拉取 pending patrol task
+- 基站回写 patrol task `running` 和 `completed`
 - 基站上传 telemetry
 
 ## 4. 云端/API 联调入口
@@ -154,53 +157,71 @@ apps/web/android/app/build/outputs/apk/debug/app-debug.apk
 
 ### 6.1 当前可立即联调
 
-第一步建议只做遥测上云和命令队列闭环：
+第一步建议做遥测上云、命令队列、巡检任务三条本地闭环：
 
 1. 小车继续按当前固件输出 telemetry JSON。
-2. BearPi 或 PC 桥接程序把 `temp_x10/humi_x10/light_x10` 换算为真实单位。
-3. 调用 `POST /api/ingest/base-stations/sle-base-001/telemetry` 上传云端。
-4. Web/App 查看实时数据、趋势和 Agent 分析。
-5. Web/App 创建命令。
-6. 基站调用 `GET /api/base-stations/sle-base-001/commands/pending` 拉取命令。
-7. 基站回执 `PATCH /api/commands/<id>/ack`。
+2. BearPi 或 PC 桥接程序读取 BearPi UDP 网关返回的 telemetry JSON。
+3. 如果 BearPi 作为 STA 接入 `SugarLab`，串口日志中的 DHCP 地址就是桥接目标，例如 `192.168.5.118:8888`。
+4. 当前仓库可直接使用 `npm run bridge:cloud -- --once` 验证一次上云。
+5. 桥接程序调用 `POST /api/ingest/base-stations/sle-base-001/telemetry` 上传云端。
+6. 云端自动把 `temp_x10/humi_x10/light_x10` 转换为真实单位并写入 reading。
+7. Web/App 查看实时数据、趋势和 Agent 分析。
+8. Web/App 创建命令。
+9. `bridge:control` 调用 `GET /api/base-stations/sle-base-001/commands/pending` 拉取命令并转发 UDP。
+10. 基站回执 `PATCH /api/commands/<id>/ack`。
+11. Web/App 创建巡检任务。
+12. `bridge:patrol` 调用 `GET /api/base-stations/sle-base-001/patrol-tasks/pending` 拉取任务，逐步转发 UDP，并回写 `running/completed/failed`。
+
+建议先按下面这组最短命令验证 telemetry 上云：
+
+```powershell
+$env:DEVICE_INGEST_KEY="<云端密钥>"
+npm run dev:server
+```
+
+另开一个终端：
+
+```powershell
+npm run bridge:cloud -- --cloud-base-url http://127.0.0.1:8787 --gateway-host 192.168.5.118 --once
+```
+
+如果本地 API 验证通过，再切到正式云端：
+
+```powershell
+$env:DEVICE_INGEST_KEY="<云端密钥>"
+npm run bridge:cloud -- --once
+```
+
+期望结果：
+
+- 终端打印一条 `[cloud-bridge] uploaded ... status=201`
+- Web 总览页出现新的环境读数
+- `GET /api/dashboard?deviceId=ws63-car-001` 能看到最新 reading
 
 ### 6.2 控制协议注意点
 
-当前 `origin/main` 云端命令 payload 为：
-
-```text
-FORWARD:<speed>
-BACKWARD:<speed>
-STOP:0
-```
-
-当前小车已验证协议更偏向：
+当前云端命令和巡检任务桥接都转发小车已验证的 JSON 控制协议：
 
 ```json
 {"cmd":"forward","speed":35,"duration_ms":600}
+{"cmd":"drive","left":70,"right":0,"duration_ms":350}
 ```
 
-以及裸文本：
+控制闭环命令：
 
-```text
-forward
-backward
-left
-right
-stop
-auto_start
-auto_stop
+```powershell
+$env:DEVICE_INGEST_KEY="dev-base-station-key"
+npm run bridge:control -- --cloud-base-url http://127.0.0.1:8787 --gateway-host 192.168.5.118 --timeout-ms 3000 --once
 ```
 
-因此真实控制联调需要先做一层 payload 适配：
+巡检任务闭环命令：
 
-| 云端 payload | 小车当前可用命令 |
-| --- | --- |
-| `FORWARD:60` | `{"cmd":"forward","speed":60,"duration_ms":600}` 或 `forward` |
-| `BACKWARD:30` | `{"cmd":"backward","speed":30,"duration_ms":600}` 或 `backward` |
-| `STOP:0` | `{"cmd":"stop","speed":0,"duration_ms":0}` 或 `stop` |
+```powershell
+$env:DEVICE_INGEST_KEY="dev-base-station-key"
+npm run bridge:patrol -- --cloud-base-url http://127.0.0.1:8787 --gateway-host 192.168.5.118 --timeout-ms 3000 --once
+```
 
-`origin/main` 暂未覆盖 `left/right/auto_start/auto_stop` 的云端命令。完整摇杆和差速控制在 `origin/community/ws63e-env-gateway` 分支已有设计，但需要小车端新增 `DRIVE:left:right:duration` 解析后再合入。
+完整摇杆和差速控制已接入云端命令模型、桥接格式、前端本地控制和小车端 `cmd=drive` 解析。硬件侧需要重新烧录小车固件后现场验证左右轮方向。
 
 ## 7. 推荐联调顺序
 
@@ -209,11 +230,13 @@ auto_stop
 3. App 队友对接云端账号、dashboard、命令创建、巡检任务、数据展示。
 4. 硬件侧先上传真实 telemetry 到云端。
 5. 再做命令队列拉取和回执。
-6. 最后做云端 payload 到小车当前协议的 SLE 转发适配。
+6. 再做巡检任务拉取、执行和状态回写。
 7. 使用 JDK 21 重跑 `npm run build:apk`，再跑 `npm run check:app-parity`。
 
 ## 8. 当前未完成项
 
-- 云端到 BearPi 的自动基站桥接程序尚未在 `origin/main` 提供。
-- 云端命令协议与当前车端控制解析还需要适配层。
-- `left/right/auto_start/auto_stop` 尚未进入 `origin/main` 云端命令模型。
+- 当前已提供 PC 侧 telemetry 上云桥接工具 `npm run bridge:cloud`，BearPi 固件内置自动上云仍未完成。
+- 当前已提供 PC 侧命令桥接工具 `npm run bridge:control`。
+- 当前已提供 PC 侧巡检任务桥接工具 `npm run bridge:patrol`。
+- 差速/非四向运动控制已完成代码接入，仍需重新烧录小车后做现场方向校准。
+- 多小车调度与任务分配仍未完成。

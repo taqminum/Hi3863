@@ -435,8 +435,9 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const radius = 40;
     const x = Math.max(-1, Math.min(1, dx / radius));
     const y = Math.max(-1, Math.min(1, -dy / radius));
-    const left = Math.max(-100, Math.min(100, Math.round((y + x) * 70)));
-    const right = Math.max(-100, Math.min(100, Math.round((y - x) * 70)));
+    const turn = y > 0 ? -x : x;
+    const left = Math.max(-100, Math.min(100, Math.round((y + turn) * 70)));
+    const right = Math.max(-100, Math.min(100, Math.round((y - turn) * 70)));
     if (Math.hypot(x, y) < 0.16) {
       stopDrive();
       return;

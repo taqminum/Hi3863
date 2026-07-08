@@ -23,6 +23,9 @@ static uint8_t g_motor_available = 0;
 static uint8_t g_manual_watchdog_active = 0;
 static uint32_t g_manual_watchdog_remaining_ms = 0;
 static uint8_t g_manual_speed_percent = 0;
+static int8_t g_manual_left_percent = 0;
+static int8_t g_manual_right_percent = 0;
+static uint8_t g_manual_differential = 0;
 static car_motion_t g_current_motion = CAR_MOTION_STOP;
 
 typedef struct {
@@ -48,6 +51,26 @@ static uint16_t motor_speed_to_ticks(uint8_t speed_percent)
         speed_percent = CAR_MOTOR_MIN_EFFECTIVE_PERCENT;
     }
     return (uint16_t)((CAR_MOTOR_PERIOD_TICKS * speed_percent) / 100U);
+}
+
+static int8_t motor_clamp_wheel_percent(int16_t percent)
+{
+    if (percent > 100) {
+        return 100;
+    }
+    if (percent < -100) {
+        return -100;
+    }
+    return (int8_t)percent;
+}
+
+static uint16_t motor_wheel_percent_to_ticks(int8_t percent)
+{
+    int16_t magnitude = percent;
+    if (magnitude < 0) {
+        magnitude = (int16_t)(-magnitude);
+    }
+    return motor_speed_to_ticks((uint8_t)magnitude);
 }
 
 static int motor_write_pwm_to(uint8_t addr, uint8_t reg, uint16_t duty)
@@ -111,6 +134,20 @@ static int motor_apply(uint16_t left_duty, int left_forward, uint16_t right_duty
     int ret_left = motor_left_set(left_duty, left_forward);
     int ret_right = motor_right_set(right_duty, right_forward);
     return (ret_left != 0) ? ret_left : ret_right;
+}
+
+static car_motion_t motor_estimate_motion(int8_t left_percent, int8_t right_percent)
+{
+    if (left_percent == 0 && right_percent == 0) {
+        return CAR_MOTION_STOP;
+    }
+    if (left_percent >= 0 && right_percent >= 0) {
+        return CAR_MOTION_FORWARD;
+    }
+    if (left_percent <= 0 && right_percent <= 0) {
+        return CAR_MOTION_BACKWARD;
+    }
+    return (left_percent > right_percent) ? CAR_MOTION_RIGHT : CAR_MOTION_LEFT;
 }
 
 static int motor_try_stop_at(uint8_t addr)
@@ -216,6 +253,34 @@ int car_motor_command(const car_motor_cmd_t *cmd)
     return ret;
 }
 
+int car_motor_drive(int8_t left_percent, int8_t right_percent, uint16_t duration_ms)
+{
+    (void)duration_ms;
+
+    if (g_motor_available == 0) {
+        printf("[car] motor unavailable; skip drive left=%d right=%d duration=%u\r\n",
+            left_percent, right_percent, duration_ms);
+        return -2;
+    }
+
+    left_percent = motor_clamp_wheel_percent(left_percent);
+    right_percent = motor_clamp_wheel_percent(right_percent);
+
+    uint16_t left_duty = motor_wheel_percent_to_ticks(left_percent);
+    uint16_t right_duty = motor_wheel_percent_to_ticks(right_percent);
+    int ret = motor_apply(left_duty,
+        left_percent >= 0 ? g_direction_map.left_forward : g_direction_map.left_reverse,
+        right_duty,
+        right_percent >= 0 ? g_direction_map.right_reverse : g_direction_map.right_forward);
+
+    printf("[car] motor drive addr=0x%02X left=%d right=%d left_duty=%u right_duty=%u duration=%u ret=0x%x\r\n",
+        g_motor_addr, left_percent, right_percent, left_duty, right_duty, duration_ms, ret);
+    if (ret == 0) {
+        g_current_motion = motor_estimate_motion(left_percent, right_percent);
+    }
+    return ret;
+}
+
 int car_motor_manual_command(const car_motor_cmd_t *cmd)
 {
     if (cmd == 0) {
@@ -227,7 +292,40 @@ int car_motor_manual_command(const car_motor_cmd_t *cmd)
         watchdog_ms = CAR_MOTOR_MANUAL_CMD_TIMEOUT_MS;
     }
 
-    if (g_manual_watchdog_active != 0 && cmd->motion != CAR_MOTION_STOP &&
+    if (cmd->differential != 0) {
+        if (g_manual_watchdog_active != 0 && g_manual_differential != 0 &&
+            cmd->left_percent == g_manual_left_percent && cmd->right_percent == g_manual_right_percent) {
+            g_manual_watchdog_remaining_ms = watchdog_ms;
+            printf("[car] motor manual drive refresh left=%d right=%d duration=%u\r\n",
+                cmd->left_percent, cmd->right_percent, (unsigned int)watchdog_ms);
+            return 0;
+        }
+
+        int ret = car_motor_drive(cmd->left_percent, cmd->right_percent, cmd->duration_ms);
+        if (ret != 0) {
+            return ret;
+        }
+
+        if (cmd->left_percent == 0 && cmd->right_percent == 0) {
+            g_manual_watchdog_active = 0;
+            g_manual_watchdog_remaining_ms = 0;
+            g_manual_speed_percent = 0;
+            g_manual_left_percent = 0;
+            g_manual_right_percent = 0;
+            g_manual_differential = 0;
+            return ret;
+        }
+
+        g_manual_watchdog_active = 1;
+        g_manual_watchdog_remaining_ms = watchdog_ms;
+        g_manual_speed_percent = 0;
+        g_manual_left_percent = cmd->left_percent;
+        g_manual_right_percent = cmd->right_percent;
+        g_manual_differential = 1;
+        return ret;
+    }
+
+    if (g_manual_watchdog_active != 0 && g_manual_differential == 0 && cmd->motion != CAR_MOTION_STOP &&
         cmd->motion == g_current_motion && cmd->speed_percent == g_manual_speed_percent) {
         g_manual_watchdog_remaining_ms = watchdog_ms;
         printf("[car] motor manual refresh motion=%u speed=%u duration=%u\r\n",
@@ -244,12 +342,18 @@ int car_motor_manual_command(const car_motor_cmd_t *cmd)
         g_manual_watchdog_active = 0;
         g_manual_watchdog_remaining_ms = 0;
         g_manual_speed_percent = 0;
+        g_manual_left_percent = 0;
+        g_manual_right_percent = 0;
+        g_manual_differential = 0;
         return ret;
     }
 
     g_manual_watchdog_active = 1;
     g_manual_watchdog_remaining_ms = watchdog_ms;
     g_manual_speed_percent = cmd->speed_percent;
+    g_manual_left_percent = 0;
+    g_manual_right_percent = 0;
+    g_manual_differential = 0;
     return ret;
 }
 
@@ -259,6 +363,9 @@ int car_motor_stop(void)
         .motion = CAR_MOTION_STOP,
         .speed_percent = 0,
         .duration_ms = 0,
+        .left_percent = 0,
+        .right_percent = 0,
+        .differential = 0,
     };
     return car_motor_command(&cmd);
 }

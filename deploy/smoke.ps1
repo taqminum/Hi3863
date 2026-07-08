@@ -91,6 +91,54 @@ if ($ack.command.status -ne "executed") {
   throw "Command ack did not persist executed status"
 }
 
+Write-Host "Smoke: create patrol task"
+$createdTask = Invoke-Json -Method POST -Path "/api/patrol-tasks" -Headers $authHeaders -Body @{
+  deviceId = $DeviceId
+  baseStationId = $BaseStationId
+  name = "Smoke patrol"
+  steps = @(
+    @{
+      action = "forward"
+      speed = 35
+      durationMs = 500
+    },
+    @{
+      action = "stop"
+      speed = 0
+      durationMs = 500
+    }
+  )
+}
+if (-not $createdTask.task.id) {
+  throw "Patrol task creation did not return task.id"
+}
+
+Write-Host "Smoke: pull pending patrol task"
+$pendingTasks = Invoke-Json -Method GET -Path "/api/base-stations/$BaseStationId/patrol-tasks/pending" -Headers $deviceHeaders
+$task = $pendingTasks.tasks | Where-Object { $_.id -eq $createdTask.task.id } | Select-Object -First 1
+if (-not $task) {
+  throw "Pending patrol task pull did not include created task $($createdTask.task.id)"
+}
+if ($task.status -ne "pulled") {
+  throw "Pending patrol task pull did not mark task as pulled"
+}
+
+Write-Host "Smoke: start patrol task"
+$runningTask = Invoke-Json -Method PATCH -Path "/api/patrol-tasks/$($createdTask.task.id)/status" -Headers $jsonDeviceHeaders -Body @{
+  status = "running"
+}
+if ($runningTask.task.status -ne "running") {
+  throw "Patrol task did not persist running status"
+}
+
+Write-Host "Smoke: complete patrol task"
+$completedTask = Invoke-Json -Method PATCH -Path "/api/patrol-tasks/$($createdTask.task.id)/status" -Headers $jsonDeviceHeaders -Body @{
+  status = "completed"
+}
+if ($completedTask.task.status -ne "completed") {
+  throw "Patrol task did not persist completed status"
+}
+
 Write-Host "Smoke: ingest telemetry"
 $batchId = "smoke-$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
 $telemetry = Invoke-Json -Method POST -Path "/api/ingest/base-stations/$BaseStationId/telemetry" -Headers $jsonDeviceHeaders -Body @{

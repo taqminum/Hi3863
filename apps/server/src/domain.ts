@@ -127,17 +127,12 @@ function driveToCurrentCarPayload(input: ControlInput): string {
   const left = clamp(Number(input.left ?? 0), -100, 100);
   const right = clamp(Number(input.right ?? 0), -100, 100);
   const durationMs = clamp(Number(input.durationMs ?? 350), 0, 3000);
-  const magnitude = Math.max(Math.abs(left), Math.abs(right));
-  if (magnitude === 0) return currentCarPayload("stop");
-
-  const average = (left + right) / 2;
-  const difference = left - right;
-  const action: Exclude<ControlAction, "drive"> =
-    Math.abs(average) >= Math.abs(difference) * 0.75
-      ? average >= 0 ? "forward" : "backward"
-      : difference > 0 ? "right" : "left";
-
-  return currentCarPayload(action, Math.max(20, magnitude), durationMs);
+  return JSON.stringify({
+    cmd: "drive",
+    left,
+    right,
+    duration_ms: durationMs
+  });
 }
 
 export function toCarControlPayload(input: ControlInput): string {

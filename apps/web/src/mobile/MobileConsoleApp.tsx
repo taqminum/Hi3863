@@ -12,7 +12,7 @@ import {
   type Reading,
   type User
 } from "../api";
-import { buildCompatPayloadFromWheels, localTelemetryToReading, type LocalTelemetrySample } from "../carProtocol";
+import { buildDrivePayload, localTelemetryToReading, type LocalTelemetrySample } from "../carProtocol";
 import { localCarApi } from "../localCarApi";
 import type { ConnectionMode } from "../types";
 import { Login } from "../views/Login";
@@ -199,7 +199,7 @@ export function MobileConsoleApp() {
       if (message.type === "drive") {
         if (connectionMode === "local") {
           lastLocalControlAtRef.current = Date.now();
-          await localCarApi.send(buildCompatPayloadFromWheels({ left: message.left, right: message.right }, message.durationMs));
+          await localCarApi.send(buildDrivePayload({ left: message.left, right: message.right }, message.durationMs));
         } else {
           if (!token) return;
           await api.command(token, {

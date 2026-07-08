@@ -1,6 +1,6 @@
 # 小车与星闪基站对接交接文档
 
-本文档给固件侧同学使用。软件侧已经对齐当前小车固件协议：Web/APK 可以继续使用摇杆交互，但进入小车或基站的最终 `payload` 会降级为当前小车能解析的 JSON 方向命令。固件侧暂时不用为了本次联调立刻实现差速 `drive(left,right)`，后续如果时间充足再扩展。
+本文档给固件侧同学使用。软件侧已经对齐小车差速协议：Web/APK 可以继续使用摇杆交互，进入小车或基站的最终 `payload` 会保留 `cmd=drive`、`left/right` 和 `duration_ms`。旧的方向命令仍保留用于兼容测试。
 
 ## 当前推荐链路
 
@@ -169,30 +169,30 @@ X-Device-Key: <DEVICE_INGEST_KEY>
 Content-Type: application/json
 ```
 
-## 未来差速摇杆扩展
+## 差速摇杆协议
 
-如果后续要让小车支持更细的转向幅度，建议新增 JSON 协议，而不是使用旧的 `DRIVE:` 文本：
+小车当前支持 JSON 差速协议。继续使用 JSON，不使用旧的 `DRIVE:` 文本：
 
 ```json
 {"cmd":"drive","left":70,"right":0,"duration_ms":350}
 ```
 
-固件侧建议：
+固件侧要求：
 
 1. 在 `control_command_parse()` 里优先识别 `cmd=drive`。
 2. `left/right` 范围限制为 `-100..100`。
 3. `duration_ms` 限制为 `0..3000`。
-4. 新增电机层接口，例如 `car_motor_drive(left_percent, right_percent, duration_ms)`。
+4. 电机层使用 `car_motor_drive(left_percent, right_percent, duration_ms)`。
 5. 低占空比补偿放在电机层，不要改云端协议。
 6. 保留超时停车保护。
 
-软件侧已经保留 `left/right/durationMs` 输入字段，等小车支持 `cmd=drive` 后，只需要把后端 `toCarControlPayload()` 切换到直接输出 drive JSON。
+软件侧已直接输出 `cmd=drive` JSON；基站和 PC bridge 只需要透传 `payload`。
 
 ## 固件侧验收建议
 
 1. 基站轮询云端命令，确认收到的 `payload` 是 JSON 字符串。
 2. 基站把 `payload` 原样通过 SLE 发给小车。
-3. 小车串口确认收到 `forward/left/right/stop` JSON 并执行。
+3. 小车串口确认收到 `drive/forward/left/right/stop` JSON 并执行。
 4. APK 摇杆按住时，小车持续动作；松手后小车停止。
 5. 基站回执 `executed` 后，APK/Web 命令历史从 `pulled` 变为 `executed`。
 6. 基站上传 telemetry 后，APK 总览页温湿度、光照和 RSSI 曲线更新。
