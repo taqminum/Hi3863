@@ -9,6 +9,7 @@
 #include "common_def.h"
 #include "securec.h"
 #include "soc_osal.h"
+#include "driver/systick.h"
 #include "sle_errcode.h"
 #include "sle_connection_manager.h"
 #include "sle_device_discovery.h"
@@ -37,12 +38,16 @@ static uint16_t g_service_handle = 0;
 static uint16_t g_property_handle = 0;
 /* sle pair acb handle */
 uint16_t g_sle_pair_hdl;
+static int8_t g_latest_rssi;
+static uint8_t g_latest_rssi_valid;
+static uint64_t g_latest_rssi_ms;
 
 #define UUID_16BIT_LEN 2
 #define UUID_128BIT_LEN 16
 #define sample_at_log_print(fmt, args...) osal_printk(fmt, ##args)
 #define SLE_UART_SERVER_LOG "[sle uart server]"
 #define SLE_SERVER_INIT_DELAY_MS    1000
+#define SLE_RSSI_EXPIRE_MS          5000
 static sle_uart_server_msg_queue g_sle_uart_server_msg_queue = NULL;
 static uint8_t g_sle_uart_base[] = { 0x37, 0xBE, 0xA8, 0x80, 0xFC, 0x70, 0x11, 0xEA, \
     0xB7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -50,6 +55,30 @@ static uint8_t g_sle_uart_base[] = { 0x37, 0xBE, 0xA8, 0x80, 0xFC, 0x70, 0x11, 0
 uint16_t get_connect_id(void)
 {
     return g_sle_conn_hdl;
+}
+
+int sle_uart_server_get_latest_rssi(int8_t *out_rssi)
+{
+    uint64_t now_ms;
+
+    if (out_rssi == NULL || g_latest_rssi_valid == 0) {
+        return -1;
+    }
+    now_ms = uapi_systick_get_ms();
+    if (now_ms < g_latest_rssi_ms || (now_ms - g_latest_rssi_ms) > SLE_RSSI_EXPIRE_MS) {
+        g_latest_rssi_valid = 0;
+        return -1;
+    }
+    *out_rssi = g_latest_rssi;
+    return 0;
+}
+
+errcode_t sle_uart_server_request_rssi(void)
+{
+    if (g_sle_conn_hdl == 0) {
+        return ERRCODE_SLE_FAIL;
+    }
+    return sle_read_remote_device_rssi(g_sle_conn_hdl);
 }
 
 static void encode2byte_little(uint8_t *_ptr, uint16_t data)
@@ -316,9 +345,13 @@ static void sle_connect_state_changed_cbk(uint16_t conn_id, const sle_addr_t *ad
         addr->addr[BT_INDEX_0], addr->addr[BT_INDEX_4]);
     if (conn_state == SLE_ACB_STATE_CONNECTED) {
         g_sle_conn_hdl = conn_id;
+        g_latest_rssi_valid = 0;
+        g_latest_rssi_ms = 0;
     } else if (conn_state == SLE_ACB_STATE_DISCONNECTED) {
         g_sle_conn_hdl = 0;
         g_sle_pair_hdl = 0;
+        g_latest_rssi_valid = 0;
+        g_latest_rssi_ms = 0;
         if (g_sle_uart_server_msg_queue != NULL) {
             g_sle_uart_server_msg_queue(sle_connect_state, sizeof(sle_connect_state));
         }
@@ -336,6 +369,21 @@ static void sle_pair_complete_cbk(uint16_t conn_id, const sle_addr_t *addr, errc
     parameter.mtu_size = 520;
     parameter.version = 1;
     ssaps_set_info(g_server_id, &parameter);
+    if (status == ERRCODE_SLE_SUCCESS) {
+        (void)sle_read_remote_device_rssi(conn_id);
+    }
+}
+
+static void sle_read_rssi_cbk(uint16_t conn_id, int8_t rssi, errcode_t status)
+{
+    if (status == ERRCODE_SLE_SUCCESS && conn_id == g_sle_conn_hdl) {
+        g_latest_rssi = rssi;
+        g_latest_rssi_valid = 1;
+        g_latest_rssi_ms = uapi_systick_get_ms();
+        sample_at_log_print("%s read rssi conn_id:%02x rssi:%d dBm\r\n", SLE_UART_SERVER_LOG, conn_id, rssi);
+        return;
+    }
+    sample_at_log_print("%s read rssi failed conn_id:%02x status:%x\r\n", SLE_UART_SERVER_LOG, conn_id, status);
 }
 
 static errcode_t sle_conn_register_cbks(void)
@@ -344,6 +392,7 @@ static errcode_t sle_conn_register_cbks(void)
     sle_connection_callbacks_t conn_cbks = {0};
     conn_cbks.connect_state_changed_cb = sle_connect_state_changed_cbk;
     conn_cbks.pair_complete_cb = sle_pair_complete_cbk;
+    conn_cbks.read_rssi_cb = sle_read_rssi_cbk;
     ret = sle_connection_register_callbacks(&conn_cbks);
     if (ret != ERRCODE_SLE_SUCCESS) {
         sample_at_log_print("%s sle_conn_register_cbks,sle_connection_register_callbacks fail :%x\r\n",

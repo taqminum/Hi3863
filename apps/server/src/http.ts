@@ -79,21 +79,24 @@ function normalizeUploadedReadings(value: unknown, deviceId: string): SensorRead
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
-    .map((item, index) => ({
-      id: String(item.id ?? `app-${deviceId}-${Date.parse(String(item.recordedAt ?? item.recorded_at ?? "")) || Date.now()}-${index}`),
-      deviceId: String(item.deviceId ?? item.device_id ?? deviceId),
-      baseStationId: String(item.baseStationId ?? item.base_station_id ?? "app-cache"),
-      temperature: Number(item.temperature ?? 0),
-      humidity: Number(item.humidity ?? 0),
-      lightness: Number(item.lightness ?? 0),
-      gear: String(item.gear ?? "M"),
-      direction: String(item.direction ?? "unknown"),
-      status: String(item.status ?? "unknown"),
-      linkMode: String(item.linkMode ?? item.link_mode ?? "app-cache"),
-      rssi: Number(item.rssi ?? 0),
-      cachedCount: Number(item.cachedCount ?? item.cached_count ?? 0),
-      recordedAt: String(item.recordedAt ?? item.recorded_at ?? new Date().toISOString())
-    }))
+    .map((item, index) => {
+      const rssi = Number(item.rssi);
+      return {
+        id: String(item.id ?? `app-${deviceId}-${Date.parse(String(item.recordedAt ?? item.recorded_at ?? "")) || Date.now()}-${index}`),
+        deviceId: String(item.deviceId ?? item.device_id ?? deviceId),
+        baseStationId: String(item.baseStationId ?? item.base_station_id ?? "app-cache"),
+        temperature: Number(item.temperature ?? 0),
+        humidity: Number(item.humidity ?? 0),
+        lightness: Number(item.lightness ?? 0),
+        gear: String(item.gear ?? "M"),
+        direction: String(item.direction ?? "unknown"),
+        status: String(item.status ?? "unknown"),
+        linkMode: String(item.linkMode ?? item.link_mode ?? "app-cache"),
+        ...(Number.isFinite(rssi) ? { rssi } : {}),
+        cachedCount: Number(item.cachedCount ?? item.cached_count ?? 0),
+        recordedAt: String(item.recordedAt ?? item.recorded_at ?? new Date().toISOString())
+      };
+    })
     .filter((item) => Number.isFinite(Date.parse(item.recordedAt)));
 }
 

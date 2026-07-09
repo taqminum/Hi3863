@@ -5,6 +5,7 @@
 #include <string.h>
 
 #ifndef CLOUD_UPLINK_HOST_TEST
+#include "driver/systick.h"
 #include "soc_osal.h"
 #include "lwip/sockets.h"
 #include "lwip/nettool/misc.h"
@@ -24,6 +25,7 @@
 #define CLOUD_UPLINK_LOOP_WAIT_MS   3000
 #define CLOUD_UPLINK_RETRY_WAIT_MS  8000
 #define CLOUD_UPLINK_RECV_TIMEOUT_S 3
+#define CLOUD_UPLINK_HEARTBEAT_MS   30000
 #endif
 
 static int cloud_uplink_build_path(char *out, size_t out_size)
@@ -91,6 +93,27 @@ int cloud_uplink_build_request(const char *body, char *out, size_t out_size)
         return -1;
     }
     return len;
+}
+
+int cloud_uplink_should_upload(const char *telemetry_json, const char *last_uploaded,
+    uint64_t now_ms, uint64_t last_upload_ms, uint64_t heartbeat_ms)
+{
+    if (telemetry_json == NULL || telemetry_json[0] == '\0') {
+        return 0;
+    }
+    if (last_uploaded == NULL || last_uploaded[0] == '\0') {
+        return 1;
+    }
+    if (strcmp(telemetry_json, last_uploaded) != 0) {
+        return 1;
+    }
+    if (heartbeat_ms == 0) {
+        return 0;
+    }
+    if (now_ms < last_upload_ms) {
+        return 1;
+    }
+    return (now_ms - last_upload_ms) >= heartbeat_ms ? 1 : 0;
 }
 
 #ifndef CLOUD_UPLINK_HOST_TEST
@@ -182,8 +205,10 @@ static void *cloud_uplink_task(const char *arg)
 {
     char telemetry[CLOUD_UPLINK_BODY_MAX] = {0};
     char last_uploaded[CLOUD_UPLINK_BODY_MAX] = {0};
+    uint64_t last_upload_ms = 0;
+    uint64_t now_ms;
 
-    unused(arg);
+    (void)arg;
     osal_msleep(CLOUD_UPLINK_BOOT_WAIT_MS);
     osal_printk("%s start http://%s%s base=%s device=%s\r\n", CLOUD_UPLINK_LOG,
         CLOUD_UPLINK_HOST, CLOUD_UPLINK_BASE_PATH, CLOUD_UPLINK_BASE_STATION,
@@ -196,13 +221,15 @@ static void *cloud_uplink_task(const char *arg)
             continue;
         }
 
-        if (strcmp(telemetry, last_uploaded) == 0) {
+        now_ms = uapi_systick_get_ms();
+        if (cloud_uplink_should_upload(telemetry, last_uploaded, now_ms, last_upload_ms, CLOUD_UPLINK_HEARTBEAT_MS) == 0) {
             osal_msleep(CLOUD_UPLINK_LOOP_WAIT_MS);
             continue;
         }
 
         if (cloud_uplink_post_once(telemetry) == 0) {
             (void)snprintf(last_uploaded, sizeof(last_uploaded), "%s", telemetry);
+            last_upload_ms = now_ms;
             osal_msleep(CLOUD_UPLINK_LOOP_WAIT_MS);
         } else {
             osal_msleep(CLOUD_UPLINK_RETRY_WAIT_MS);

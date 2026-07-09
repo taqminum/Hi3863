@@ -12,7 +12,7 @@ import {
 } from "./carProtocol.ts";
 
 export interface GatewayTelemetrySample extends LocalTelemetrySample {
-  rssi: number;
+  rssi?: number;
   cachedCount: number;
 }
 
@@ -53,9 +53,10 @@ function rawFromText(text: string): RawGatewayTelemetry {
 export function parseGatewayTelemetryResponse(text: string, recordedAt = new Date().toISOString()): GatewayTelemetrySample {
   const raw = rawFromText(text);
   const sample = normalizeCarTelemetry(raw, recordedAt);
+  const rssi = Number(raw.rssi);
   return {
     ...sample,
-    rssi: Number(raw.rssi ?? -45),
+    ...(Number.isFinite(rssi) ? { rssi } : {}),
     cachedCount: Number(raw.cached_count ?? 0)
   };
 }

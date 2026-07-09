@@ -79,7 +79,7 @@ export interface SensorReading {
   direction: string;
   status: string;
   linkMode: string;
-  rssi: number;
+  rssi?: number;
   cachedCount: number;
   recordedAt: string;
 }
@@ -175,6 +175,11 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function finiteNumberOrUndefined(value: unknown): number | undefined {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
 function rawMotionDirection(value: unknown): string {
   const names = ["stop", "forward", "backward", "left", "right"];
   const index = Number(value);
@@ -193,13 +198,14 @@ export function normalizeIncomingTelemetry(payload: unknown, baseStationId: stri
   const patrol = Boolean(raw.patrol);
   const direction = rawMotionDirection(raw.motion);
 
+  const rssi = finiteNumberOrUndefined(raw.rssi);
   return {
     batchId: raw.seq === undefined ? undefined : `${baseStationId}-${deviceId}-${raw.seq}`,
     sequence: raw.seq,
     baseStationId,
     receivedAt: recordedAt,
     link: {
-      rssi: Number(raw.rssi ?? -45),
+      ...(rssi === undefined ? {} : { rssi }),
       cachedCount: clamp(Number(raw.cached_count ?? 0), 0, 100000),
       mode: "sle"
     },
@@ -236,7 +242,7 @@ export function parsePatrolSteps(value: unknown): PatrolStep[] {
 export function normalizeTelemetry(payload: BaseStationTelemetry): SensorReading[] {
   const recordedAt = payload.receivedAt ?? new Date().toISOString();
   const linkMode = payload.link?.mode ?? "sle";
-  const rssi = Number(payload.link?.rssi ?? -45);
+  const rssi = finiteNumberOrUndefined(payload.link?.rssi);
   const cachedCount = clamp(Number(payload.link?.cachedCount ?? 0), 0, 100000);
 
   return payload.devices.map((device, index) => ({
@@ -250,7 +256,7 @@ export function normalizeTelemetry(payload: BaseStationTelemetry): SensorReading
     direction: device.direction ?? "forward",
     status: device.status ?? "idle",
     linkMode,
-    rssi,
+    ...(rssi === undefined ? {} : { rssi }),
     cachedCount,
     recordedAt
   }));
@@ -303,10 +309,11 @@ export function createAgentReport(readings: SensorReading[]): AgentReport {
     score += 1;
   }
 
-  if (latest.rssi <= -75) {
+  const latestRssi = latest.rssi;
+  if (typeof latestRssi === "number" && Number.isFinite(latestRssi) && latestRssi <= -75) {
     findings.push("星闪链路偏弱");
     suggestions.push("建议调整基站位置或缩短小车与基站距离。");
-    evidence.push({ code: "rssi_weak", label: "SLE RSSI 偏弱", value: latest.rssi, threshold: -75 });
+    evidence.push({ code: "rssi_weak", label: "SLE RSSI 偏弱", value: latestRssi, threshold: -75 });
     score += 2;
   }
 

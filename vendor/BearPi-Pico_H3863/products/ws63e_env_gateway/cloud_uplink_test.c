@@ -28,6 +28,10 @@ int main(void)
     assert(strstr(request, expected_length) != NULL);
     assert(strstr(request, "\r\n\r\n{\"deviceId\":\"ws63-car-001\"") != NULL);
 
+    assert(cloud_uplink_should_upload(telemetry, "", 3000, 0, 9000) == 1);
+    assert(cloud_uplink_should_upload(telemetry, telemetry, 3000, 0, 9000) == 0);
+    assert(cloud_uplink_should_upload(telemetry, telemetry, 9500, 0, 9000) == 1);
+
     puts("cloud_uplink_test passed");
     return 0;
 }

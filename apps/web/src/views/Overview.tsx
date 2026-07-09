@@ -22,7 +22,8 @@ export function Overview({ model }: { model: DashboardViewModel }) {
   const modalValues = modal === "signal" ? signalValues : modal === "temp" ? tempValues : modal === "humid" ? humidValues : lightValues;
   const baseOnline = model.base?.status === "online";
   const deviceOnline = model.selectedDevice?.status === "online";
-  const weakSignal = (model.rssi ?? -45) < -75;
+  const hasRssi = Number.isFinite(model.rssi);
+  const weakSignal = hasRssi && Number(model.rssi) < -75;
   const humidityWarning = (model.humidity ?? 0) >= 80;
 
   return (
@@ -34,7 +35,7 @@ export function Overview({ model }: { model: DashboardViewModel }) {
           <div className="node active"><div className="node-icon"><Cloud /></div><span className="node-label">云服务器</span></div>
           <div className="link-line link-active"><span className="link-label">TCP</span></div>
           <div className={baseOnline ? "node active" : "node"}><div className="node-icon"><RadioTower /></div><span className="node-label">{model.base?.name ?? "H3863 基站"}</span></div>
-          <div className={weakSignal ? "link-line link-warning" : "link-line link-active"}><span className="link-label">{weakSignal ? "SLE弱网" : "SLE"}</span></div>
+          <div className={weakSignal ? "link-line link-warning" : hasRssi ? "link-line link-active" : "link-line"}><span className="link-label">{weakSignal ? "SLE弱网" : hasRssi ? "SLE" : "SLE未知"}</span></div>
           <div className={deviceOnline ? "node active node-warn" : "node node-warn"}><div className="node-icon"><Cpu /></div><span className="node-label">{model.selectedDevice?.name ?? "小车节点"}</span></div>
         </div>
 
@@ -52,7 +53,7 @@ export function Overview({ model }: { model: DashboardViewModel }) {
       </div>
 
       <div className="data-grid">
-        <OverviewDataCard icon={Activity} label="SLE 信号质量" value={model.rssi === undefined ? "--" : String(model.rssi)} unit="dBm" status={weakSignal ? "弱网" : "正常"} tone={weakSignal ? "warning" : "highlight"} values={signalValues} onClick={() => setModal("signal")} />
+        <OverviewDataCard icon={Activity} label="SLE 信号质量" value={model.rssi === undefined ? "--" : String(model.rssi)} unit="dBm" status={weakSignal ? "弱网" : hasRssi ? "正常" : "未上报"} tone={weakSignal ? "warning" : hasRssi ? "highlight" : undefined} values={signalValues} onClick={() => setModal("signal")} />
         <OverviewDataCard icon={Thermometer} label="环境温度" value={model.temperature === undefined ? "--" : model.temperature.toFixed(1)} unit="°C" status={(model.temperature ?? 0) > 32 ? "偏高" : "正常"} tone={(model.temperature ?? 0) > 32 ? "warning" : undefined} values={tempValues} onClick={() => setModal("temp")} />
         <OverviewDataCard icon={Droplets} label="环境湿度" value={model.humidity === undefined ? "--" : model.humidity.toFixed(1)} unit="%RH" status={humidityWarning ? "预警" : "正常"} tone={humidityWarning ? "warning" : undefined} values={humidValues} onClick={() => setModal("humid")} />
         <OverviewDataCard icon={Sun} label="环境光照" value={model.lightness === undefined ? "--" : model.lightness.toFixed(0)} unit="lx" status="正常" values={lightValues} onClick={() => setModal("light")} />

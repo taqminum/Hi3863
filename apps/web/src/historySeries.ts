@@ -33,7 +33,7 @@ export interface AgentHistorySummary {
     temperature: number;
     humidity: number;
     lightness: number;
-    rssi: number;
+    rssi?: number;
     source?: ReadingSource;
   }>;
   stats: Record<NumericReadingField, {
@@ -207,7 +207,7 @@ export function summarizeReadingsForAgent(readings: Reading[], input: {
     temperature: reading.temperature,
     humidity: reading.humidity,
     lightness: reading.lightness,
-    rssi: reading.rssi,
+    ...(reading.rssi === undefined ? {} : { rssi: reading.rssi }),
     source: (reading as Partial<CachedReading>).source
   }));
   const sources = Array.from(new Set(

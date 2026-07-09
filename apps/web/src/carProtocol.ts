@@ -238,7 +238,6 @@ export function localTelemetryToReading(sample: LocalTelemetrySample) {
     direction: sample.motion,
     status: sample.err === 0 ? (sample.motion === "stop" ? "idle" : "moving") : "fault",
     linkMode: "wifi-softap",
-    rssi: 0,
     cachedCount: 0,
     recordedAt: sample.recordedAt
   };

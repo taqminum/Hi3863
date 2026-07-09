@@ -20,7 +20,7 @@ export interface Reading {
   direction: string;
   status: string;
   linkMode: string;
-  rssi: number;
+  rssi?: number;
   cachedCount: number;
   recordedAt: string;
 }
@@ -43,7 +43,7 @@ export interface BaseStationRecord {
   status: string;
   network_status: string;
   last_heartbeat: string;
-  last_rssi?: number;
+  last_rssi?: number | null;
   cached_count?: number;
 }
 

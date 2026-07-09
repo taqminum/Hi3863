@@ -44,6 +44,10 @@ errcode_t sle_uart_server_send_report_by_handle(const uint8_t *data, uint16_t le
 
 uint16_t sle_uart_client_is_connected(void);
 
+errcode_t sle_uart_server_request_rssi(void);
+
+int sle_uart_server_get_latest_rssi(int8_t *out_rssi);
+
 typedef void (*sle_uart_server_msg_queue)(uint8_t *buffer_addr, uint16_t buffer_size);
 
 void sle_uart_server_register_msg(sle_uart_server_msg_queue sle_uart_server_msg);
