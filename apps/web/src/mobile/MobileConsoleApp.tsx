@@ -511,10 +511,6 @@ export function MobileConsoleApp() {
         }
         return;
       }
-      if (message.type === "create-patrol") {
-        await createMobilePatrol();
-        return;
-      }
       if (message.type === "refresh-agent") {
         const range = rangeForCache();
         const summary = summarizeReadingsForAgent(activeReadings, { ...range, maxPoints: 100 });
@@ -536,7 +532,7 @@ export function MobileConsoleApp() {
         }
       }
     });
-  }, [activeReadings, changeConnectionMode, connectionMode, createMobilePatrol, guarded, logout, postSnapshot, rangeForCache, refresh, selectedDevice.base_station_id, selectedDevice.id, token]);
+  }, [activeReadings, changeConnectionMode, connectionMode, guarded, logout, postSnapshot, rangeForCache, refresh, selectedDevice.base_station_id, selectedDevice.id, token]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent<MobileOpenDesignToHostMessage>) {

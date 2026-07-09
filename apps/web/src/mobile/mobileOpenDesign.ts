@@ -101,7 +101,6 @@ export type MobileOpenDesignToHostMessage =
   | { source: "ws63-mobile-open-design"; type: "connection-mode"; mode: ConnectionMode }
   | { source: "ws63-mobile-open-design"; type: "connect-network" }
   | { source: "ws63-mobile-open-design"; type: "history-range"; range: MobileHistoryRange }
-  | { source: "ws63-mobile-open-design"; type: "create-patrol"; template: "standard" }
   | { source: "ws63-mobile-open-design"; type: "refresh-agent" }
   | { source: "ws63-mobile-open-design"; type: "logout" };
 
@@ -1026,52 +1025,6 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     return currentSpeed;
   }
 
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function updateTaskQueue(snapshot) {
-    const cards = Array.isArray(snapshot.taskCards) ? snapshot.taskCards : [];
-    const queue = document.querySelector("#view-tasks .queue-list");
-    const header = document.querySelector("#view-tasks .task-panel:nth-child(2) .panel-header span");
-    if (header) header.textContent = "任务队列 (" + cards.length + ")";
-    if (!queue) return;
-    if (cards.length === 0) {
-      queue.innerHTML = '<div class="empty-state">暂无巡检任务</div>';
-      return;
-    }
-    queue.innerHTML = snapshot.taskCards.map((task) => (
-      '<div class="task-card ' + escapeHtml(task.status) + '">' +
-        '<div class="tc-header"><span class="tc-title">' + escapeHtml(task.name) + '</span><span class="badge ' + escapeHtml(task.status) + '">' + escapeHtml(task.statusLabel) + '</span></div>' +
-        '<div class="tc-meta"><i data-lucide="map-pin"></i> ' + escapeHtml(task.detail) + '</div>' +
-        '<div class="tc-time">' + escapeHtml(task.timeLabel) + ' · ' + escapeHtml(task.baseStationId) + '</div>' +
-      '</div>'
-    )).join("");
-    window.lucide?.createIcons?.();
-  }
-
-  function updateTaskTimeline(snapshot) {
-    const items = Array.isArray(snapshot.taskTimeline) ? snapshot.taskTimeline : [];
-    const timeline = document.querySelector("#view-tasks .timeline");
-    const badge = document.querySelector("#view-tasks .tl-header-badge");
-    if (badge) badge.textContent = snapshot.taskStatus === "--" ? "等待任务" : snapshot.taskStatus;
-    if (!timeline || items.length === 0) return;
-    timeline.innerHTML = items.map((item) => {
-      const className = item.state === "idle" ? "tl-item" : "tl-item " + item.state;
-      return '<div class="' + className + '">' +
-        '<div class="tl-marker"></div>' +
-        '<div class="tl-content">' +
-          '<div class="tl-title">' + escapeHtml(item.title) + '</div>' +
-          '<div class="tl-meta">' + escapeHtml(item.meta) + '</div>' +
-        '</div>' +
-      '</div>';
-    }).join("");
-  }
-
   function readSpeedPercent() {
     const speed = readSpeed();
     if (speed <= 2.5) return Math.max(0, Math.min(100, Math.round((speed / 2.0) * 100)));
@@ -1145,12 +1098,6 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     }
     document.getElementById("speed-slider")?.addEventListener("touchend", readSpeed);
     document.getElementById("speed-slider")?.addEventListener("mouseup", readSpeed);
-    document.querySelector(".btn-primary")?.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      send("create-patrol", { template: "standard" });
-    }, true);
     document.querySelector(".agent-card")?.addEventListener("click", () => send("refresh-agent"));
   }
 
@@ -1348,8 +1295,6 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     updateChart("dt-chart-temp", snapshot.series.temperature);
     updateChart("dt-chart-humid", snapshot.series.humidity);
     updateChart("dt-chart-light", snapshot.series.lightness);
-    updateTaskQueue(snapshot);
-    updateTaskTimeline(snapshot);
     window.__ws63MobileSnapshot = snapshot;
   }
 
