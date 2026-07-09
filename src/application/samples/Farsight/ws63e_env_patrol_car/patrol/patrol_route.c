@@ -11,23 +11,34 @@ typedef struct {
 } patrol_step_t;
 
 static const patrol_step_t g_route[] = {
-    {CAR_MOTION_FORWARD, 45, 2000},
-    {CAR_MOTION_LEFT, 35, 600},
-    {CAR_MOTION_FORWARD, 45, 2000},
-    {CAR_MOTION_LEFT, 35, 600},
-    {CAR_MOTION_FORWARD, 45, 2000},
-    {CAR_MOTION_LEFT, 35, 600},
-    {CAR_MOTION_FORWARD, 45, 2000},
-    {CAR_MOTION_LEFT, 35, 600},
+    {CAR_MOTION_FORWARD, 45, 1900},
+    {CAR_MOTION_STOP, 0, 220},
+    {CAR_MOTION_LEFT, 46, 420},
+    {CAR_MOTION_LEFT, 30, 180},
+    {CAR_MOTION_FORWARD, 45, 1900},
+    {CAR_MOTION_STOP, 0, 220},
+    {CAR_MOTION_LEFT, 46, 420},
+    {CAR_MOTION_LEFT, 30, 180},
+    {CAR_MOTION_FORWARD, 45, 1900},
+    {CAR_MOTION_STOP, 0, 220},
+    {CAR_MOTION_LEFT, 46, 420},
+    {CAR_MOTION_LEFT, 30, 180},
+    {CAR_MOTION_FORWARD, 45, 1900},
+    {CAR_MOTION_STOP, 0, 220},
+    {CAR_MOTION_LEFT, 46, 420},
+    {CAR_MOTION_LEFT, 30, 180},
     {CAR_MOTION_STOP, 0, 500},
 };
 
 static const patrol_step_t g_return_lane_route[] = {
-    {CAR_MOTION_FORWARD, 42, 2200},
-    {CAR_MOTION_STOP, 0, 500},
-    {CAR_MOTION_RIGHT, 32, 520},
-    {CAR_MOTION_FORWARD, 38, 1600},
-    {CAR_MOTION_LEFT, 32, 520},
+    {CAR_MOTION_FORWARD, 42, 2100},
+    {CAR_MOTION_STOP, 0, 260},
+    {CAR_MOTION_RIGHT, 40, 420},
+    {CAR_MOTION_RIGHT, 26, 140},
+    {CAR_MOTION_FORWARD, 38, 1500},
+    {CAR_MOTION_STOP, 0, 220},
+    {CAR_MOTION_LEFT, 40, 420},
+    {CAR_MOTION_LEFT, 26, 140},
     {CAR_MOTION_BACKWARD, 35, 2200},
     {CAR_MOTION_STOP, 0, 500},
 };
@@ -54,7 +65,7 @@ void patrol_route_start(void)
     g_step_elapsed = 0;
     g_active_route = g_route;
     g_active_route_len = sizeof(g_route) / sizeof(g_route[0]);
-    printf("[car] closed-loop route start\r\n");
+    printf("[car] closed-loop square patrol start\r\n");
 }
 
 void patrol_route_start_return_lane(void)
@@ -64,7 +75,7 @@ void patrol_route_start_return_lane(void)
     g_step_elapsed = 0;
     g_active_route = g_return_lane_route;
     g_active_route_len = sizeof(g_return_lane_route) / sizeof(g_return_lane_route[0]);
-    printf("[car] return-lane route start\r\n");
+    printf("[car] return-lane square patrol start\r\n");
 }
 
 void patrol_route_stop(void)
@@ -76,7 +87,7 @@ void patrol_route_stop(void)
     if (was_enabled != 0) {
         (void)car_motor_stop();
     }
-    printf("[car] precheck route stop\r\n");
+    printf("[car] patrol route stop\r\n");
 }
 
 void patrol_route_tick(uint32_t elapsed_ms, env_data_t *data)

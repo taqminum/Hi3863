@@ -4,6 +4,7 @@
 #===============================================================================
 
 set(SOURCES_LIST
+    ${CMAKE_CURRENT_SOURCE_DIR}/sle_rssi_link_state.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sle_uart_server_adv.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sle_uart_server.c
     ${CMAKE_CURRENT_SOURCE_DIR}/wifi_softap.c

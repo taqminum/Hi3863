@@ -1450,7 +1450,8 @@ function patrolActionLabel(action: string): string {
     left: "左转",
     right: "右转",
     stop: "停止",
-    auto_start: "启动预检",
+    auto_start: "方形闭环巡检",
+    auto_return: "方角折返巡检",
     auto_stop: "停止预检",
     drive: "差速行驶"
   }[action] ?? action;
@@ -1478,10 +1479,10 @@ function parseJsonList(value: unknown): unknown[] {
 
 function formatTaskStep(step: { action?: string; speed?: number; durationMs?: number; duration_ms?: number }): string {
   const action = String(step.action ?? "forward");
-  if (action === "stop") return "停止";
-  const speed = Number.isFinite(step.speed) ? ` ${step.speed}%` : "";
   const duration = Number(step.durationMs ?? step.duration_ms ?? 0);
   const durationLabel = duration > 0 ? ` ${(duration / 1000).toFixed(duration % 1000 === 0 ? 0 : 1)}s` : "";
+  if (action === "stop") return `停顿${durationLabel}`;
+  const speed = Number.isFinite(step.speed) ? ` ${step.speed}%` : "";
   return `${patrolActionLabel(action)}${speed}${durationLabel}`;
 }
 
@@ -1510,7 +1511,7 @@ function buildTaskCards(tasks: PatrolTask[]): MobileTaskCard[] {
 function buildTaskTimeline(task?: PatrolTask): MobileTaskTimelineItem[] {
   if (!task) {
     return [
-      { title: "等待创建巡检任务", meta: "可选择闭合环线或折返通道", state: "idle" },
+      { title: "等待创建巡检任务", meta: "可选择方形闭环或方角折返", state: "idle" },
       { title: "等待基站拉取", meta: "任务创建后显示真实状态", state: "idle" },
       { title: "等待线路执行", meta: "向固件下发所选路线命令", state: "idle" },
       { title: "等待完成回执", meta: "完成或失败后在此处显示结果", state: "idle" }

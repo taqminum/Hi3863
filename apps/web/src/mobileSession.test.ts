@@ -74,7 +74,7 @@ test("builds a real local patrol task record for gateway and car direct mode", (
   });
 
   assert.equal(next[0].status, "running");
-  assert.equal(next[0].name, "基站闭合环线巡检");
+  assert.equal(next[0].name, "基站方形闭环巡检");
   assert.equal(next[0].started_at, "2026-07-08T12:00:00.000Z");
   assert.match(next[0].steps_json, /closed-loop|left|forward/);
   assert.equal(next[1].id, "task-old");
@@ -96,10 +96,10 @@ test("local patrol tasks complete after the selected route duration", () => {
 
   const completed = reconcileLocalPatrolTasks([task], Date.parse(task.created_at) + durationMs + 700);
   assert.equal(completed[0].status, "completed");
-  assert.equal(completed[0].finished_at, "2026-07-08T12:00:08.040Z");
+  assert.equal(completed[0].finished_at, "2026-07-08T12:00:07.900Z");
 });
 
-test("local patrol display route uses a closed-loop inspection route", () => {
+test("local patrol display route uses a square-corner closed-loop inspection route", () => {
   const [task] = buildLocalPatrolTask({
     currentTasks: [],
     deviceId: "ws63-car-001",
@@ -109,14 +109,22 @@ test("local patrol display route uses a closed-loop inspection route", () => {
   });
 
   const expectedClosedLoopRoute = [
-    { action: "forward", speed: 45, durationMs: 2000 },
-    { action: "left", speed: 35, durationMs: 600 },
-    { action: "forward", speed: 45, durationMs: 2000 },
-    { action: "left", speed: 35, durationMs: 600 },
-    { action: "forward", speed: 45, durationMs: 2000 },
-    { action: "left", speed: 35, durationMs: 600 },
-    { action: "forward", speed: 45, durationMs: 2000 },
-    { action: "left", speed: 35, durationMs: 600 },
+    { action: "forward", speed: 45, durationMs: 1900 },
+    { action: "stop", speed: 0, durationMs: 220 },
+    { action: "left", speed: 46, durationMs: 420 },
+    { action: "left", speed: 30, durationMs: 180 },
+    { action: "forward", speed: 45, durationMs: 1900 },
+    { action: "stop", speed: 0, durationMs: 220 },
+    { action: "left", speed: 46, durationMs: 420 },
+    { action: "left", speed: 30, durationMs: 180 },
+    { action: "forward", speed: 45, durationMs: 1900 },
+    { action: "stop", speed: 0, durationMs: 220 },
+    { action: "left", speed: 46, durationMs: 420 },
+    { action: "left", speed: 30, durationMs: 180 },
+    { action: "forward", speed: 45, durationMs: 1900 },
+    { action: "stop", speed: 0, durationMs: 220 },
+    { action: "left", speed: 46, durationMs: 420 },
+    { action: "left", speed: 30, durationMs: 180 },
     { action: "stop", speed: 0, durationMs: 500 }
   ];
 
@@ -126,15 +134,18 @@ test("local patrol display route uses a closed-loop inspection route", () => {
 });
 
 test("mobile patrol templates provide two distinct effective routes", () => {
-  assert.equal(selectMobilePatrolTemplate("closed-loop").name, "闭合环线巡检");
-  assert.equal(selectMobilePatrolTemplate("return-lane").name, "折返通道巡检");
+  assert.equal(selectMobilePatrolTemplate("closed-loop").name, "方形闭环巡检");
+  assert.equal(selectMobilePatrolTemplate("return-lane").name, "方角折返巡检");
   assert.notDeepEqual(closedLoopPatrolSteps, returnLanePatrolSteps);
   assert.deepEqual(returnLanePatrolSteps, [
-    { action: "forward", speed: 42, durationMs: 2200 },
-    { action: "stop", speed: 0, durationMs: 500 },
-    { action: "right", speed: 32, durationMs: 520 },
-    { action: "forward", speed: 38, durationMs: 1600 },
-    { action: "left", speed: 32, durationMs: 520 },
+    { action: "forward", speed: 42, durationMs: 2100 },
+    { action: "stop", speed: 0, durationMs: 260 },
+    { action: "right", speed: 40, durationMs: 420 },
+    { action: "right", speed: 26, durationMs: 140 },
+    { action: "forward", speed: 38, durationMs: 1500 },
+    { action: "stop", speed: 0, durationMs: 220 },
+    { action: "left", speed: 40, durationMs: 420 },
+    { action: "left", speed: 26, durationMs: 140 },
     { action: "backward", speed: 35, durationMs: 2200 },
     { action: "stop", speed: 0, durationMs: 500 }
   ]);

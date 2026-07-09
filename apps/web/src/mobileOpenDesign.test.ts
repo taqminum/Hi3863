@@ -511,7 +511,7 @@ test("snapshot exposes real patrol task cards and route steps for the mobile tas
     name: "验收预检线路",
     status: "running",
     statusLabel: "执行中",
-    detail: "前进 70% 1.2s -> 左转 45% 0.5s -> 停止",
+    detail: "前进 70% 1.2s -> 左转 45% 0.5s -> 停顿",
     timeLabel: "20:00:03",
     baseStationId: "sle-base-001"
   }]);

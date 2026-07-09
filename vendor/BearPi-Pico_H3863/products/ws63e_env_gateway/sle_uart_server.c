@@ -13,6 +13,7 @@
 #include "sle_errcode.h"
 #include "sle_connection_manager.h"
 #include "sle_device_discovery.h"
+#include "sle_rssi_link_state.h"
 #include "sle_uart_server_adv.h"
 #include "sle_uart_server.h"
 #define OCTET_BIT_LEN           8
@@ -29,7 +30,7 @@ static char g_sle_uuid_app_uuid[UUID_LEN_2] = { 0x12, 0x34 };
 /* server notify property uuid for test */
 static char g_sle_property_value[OCTET_BIT_LEN] = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
 /* sle connect acb handle */
-static uint16_t g_sle_conn_hdl = 0;
+static sle_rssi_link_state_t g_sle_link_state;
 /* sle server handle */
 static uint8_t g_server_id = 0;
 /* sle service handle */
@@ -54,7 +55,7 @@ static uint8_t g_sle_uart_base[] = { 0x37, 0xBE, 0xA8, 0x80, 0xFC, 0x70, 0x11, 0
 
 uint16_t get_connect_id(void)
 {
-    return g_sle_conn_hdl;
+    return sle_rssi_link_state_conn_id(&g_sle_link_state);
 }
 
 int sle_uart_server_get_latest_rssi(int8_t *out_rssi)
@@ -75,10 +76,10 @@ int sle_uart_server_get_latest_rssi(int8_t *out_rssi)
 
 errcode_t sle_uart_server_request_rssi(void)
 {
-    if (g_sle_conn_hdl == 0) {
+    if (sle_rssi_link_state_has_connection(&g_sle_link_state) == 0) {
         return ERRCODE_SLE_FAIL;
     }
-    return sle_read_remote_device_rssi(g_sle_conn_hdl);
+    return sle_read_remote_device_rssi(sle_rssi_link_state_conn_id(&g_sle_link_state));
 }
 
 static void encode2byte_little(uint8_t *_ptr, uint16_t data)
@@ -293,8 +294,12 @@ errcode_t sle_uart_server_send_report_by_uuid(const uint8_t *data, uint8_t len)
         osal_vfree(param.value);
         return ERRCODE_SLE_FAIL;
     }
+    if (sle_rssi_link_state_has_connection(&g_sle_link_state) == 0) {
+        osal_vfree(param.value);
+        return ERRCODE_SLE_FAIL;
+    }
     sle_uuid_setu2(SLE_UUID_SERVER_NTF_REPORT, &param.uuid);
-    ret = ssaps_notify_indicate_by_uuid(g_server_id, g_sle_conn_hdl, &param);
+    ret = ssaps_notify_indicate_by_uuid(g_server_id, sle_rssi_link_state_conn_id(&g_sle_link_state), &param);
     if (ret != ERRCODE_SLE_SUCCESS) {
         sample_at_log_print("%s sle_uart_server_send_report_by_uuid,ssaps_notify_indicate_by_uuid fail :%x\r\n",
             SLE_UART_SERVER_LOG, ret);
@@ -310,6 +315,9 @@ errcode_t sle_uart_server_send_report_by_handle(const uint8_t *data, uint16_t le
 {
     ssaps_ntf_ind_t param = {0};
     uint8_t receive_buf[UART_BUFF_LENGTH] = { 0 }; /* max receive length. */
+    if (sle_rssi_link_state_has_connection(&g_sle_link_state) == 0) {
+        return ERRCODE_SLE_FAIL;
+    }
     param.handle = g_property_handle;
     param.type = SSAP_PROPERTY_TYPE_VALUE;
     param.value = receive_buf;
@@ -317,7 +325,7 @@ errcode_t sle_uart_server_send_report_by_handle(const uint8_t *data, uint16_t le
     if (memcpy_s(param.value, param.value_len, data, len) != EOK) {
         return ERRCODE_SLE_FAIL;
     }
-    return ssaps_notify_indicate(g_server_id, g_sle_conn_hdl, &param);
+    return ssaps_notify_indicate(g_server_id, sle_rssi_link_state_conn_id(&g_sle_link_state), &param);
 }
 
 void sle_uart_server_sample_set_mcs(uint16_t conn_id)
@@ -344,11 +352,11 @@ static void sle_connect_state_changed_cbk(uint16_t conn_id, const sle_addr_t *ad
     sample_at_log_print("%s connect state changed callback addr:%02x:**:**:**:%02x:%02x\r\n", SLE_UART_SERVER_LOG,
         addr->addr[BT_INDEX_0], addr->addr[BT_INDEX_4]);
     if (conn_state == SLE_ACB_STATE_CONNECTED) {
-        g_sle_conn_hdl = conn_id;
+        sle_rssi_link_state_on_connect(&g_sle_link_state, conn_id);
         g_latest_rssi_valid = 0;
         g_latest_rssi_ms = 0;
     } else if (conn_state == SLE_ACB_STATE_DISCONNECTED) {
-        g_sle_conn_hdl = 0;
+        sle_rssi_link_state_on_disconnect(&g_sle_link_state);
         g_sle_pair_hdl = 0;
         g_latest_rssi_valid = 0;
         g_latest_rssi_ms = 0;
@@ -376,7 +384,9 @@ static void sle_pair_complete_cbk(uint16_t conn_id, const sle_addr_t *addr, errc
 
 static void sle_read_rssi_cbk(uint16_t conn_id, int8_t rssi, errcode_t status)
 {
-    if (status == ERRCODE_SLE_SUCCESS && conn_id == g_sle_conn_hdl) {
+    if (status == ERRCODE_SLE_SUCCESS &&
+        sle_rssi_link_state_has_connection(&g_sle_link_state) != 0 &&
+        conn_id == sle_rssi_link_state_conn_id(&g_sle_link_state)) {
         g_latest_rssi = rssi;
         g_latest_rssi_valid = 1;
         g_latest_rssi_ms = uapi_systick_get_ms();
@@ -412,6 +422,8 @@ errcode_t sle_uart_server_init(ssaps_read_request_callback ssaps_read_callback, 
     ssaps_write_callback)
 {
     errcode_t ret;
+
+    sle_rssi_link_state_init(&g_sle_link_state);
 
     /* 使能SLE */
     if (enable_sle() != ERRCODE_SUCC) {

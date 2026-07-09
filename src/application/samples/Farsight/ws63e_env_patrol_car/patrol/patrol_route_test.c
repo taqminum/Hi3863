@@ -5,7 +5,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-#define RECORDED_MAX 12
+#define RECORDED_MAX 40
 
 static car_motor_cmd_t g_recorded[RECORDED_MAX];
 static unsigned int g_recorded_count;
@@ -69,35 +69,59 @@ static void test_closed_loop_route(void)
     patrol_route_tick(1000, &data);
     assert(data.patrol_enabled == 1);
     assert(data.motion == CAR_MOTION_FORWARD);
-    assert_step(0, CAR_MOTION_FORWARD, 45, 2000);
+    assert_step(0, CAR_MOTION_FORWARD, 45, 1900);
 
-    tick_with_data(1000);
-    tick_with_data(600);
-    assert_step(1, CAR_MOTION_LEFT, 35, 600);
+    tick_with_data(900);
+    tick_with_data(220);
+    assert_step(1, CAR_MOTION_STOP, 0, 220);
 
-    tick_with_data(2000);
-    assert_step(2, CAR_MOTION_FORWARD, 45, 2000);
+    tick_with_data(420);
+    assert_step(2, CAR_MOTION_LEFT, 46, 420);
 
-    tick_with_data(600);
-    assert_step(3, CAR_MOTION_LEFT, 35, 600);
+    tick_with_data(180);
+    assert_step(3, CAR_MOTION_LEFT, 30, 180);
 
-    tick_with_data(2000);
-    assert_step(4, CAR_MOTION_FORWARD, 45, 2000);
+    tick_with_data(1900);
+    assert_step(4, CAR_MOTION_FORWARD, 45, 1900);
 
-    tick_with_data(600);
-    assert_step(5, CAR_MOTION_LEFT, 35, 600);
+    tick_with_data(220);
+    assert_step(5, CAR_MOTION_STOP, 0, 220);
 
-    tick_with_data(2000);
-    assert_step(6, CAR_MOTION_FORWARD, 45, 2000);
+    tick_with_data(420);
+    assert_step(6, CAR_MOTION_LEFT, 46, 420);
 
-    tick_with_data(600);
-    assert_step(7, CAR_MOTION_LEFT, 35, 600);
+    tick_with_data(180);
+    assert_step(7, CAR_MOTION_LEFT, 30, 180);
+
+    tick_with_data(1900);
+    assert_step(8, CAR_MOTION_FORWARD, 45, 1900);
+
+    tick_with_data(220);
+    assert_step(9, CAR_MOTION_STOP, 0, 220);
+
+    tick_with_data(420);
+    assert_step(10, CAR_MOTION_LEFT, 46, 420);
+
+    tick_with_data(180);
+    assert_step(11, CAR_MOTION_LEFT, 30, 180);
+
+    tick_with_data(1900);
+    assert_step(12, CAR_MOTION_FORWARD, 45, 1900);
+
+    tick_with_data(220);
+    assert_step(13, CAR_MOTION_STOP, 0, 220);
+
+    tick_with_data(420);
+    assert_step(14, CAR_MOTION_LEFT, 46, 420);
+
+    tick_with_data(180);
+    assert_step(15, CAR_MOTION_LEFT, 30, 180);
 
     tick_with_data(500);
-    assert_step(8, CAR_MOTION_STOP, 0, 500);
+    assert_step(16, CAR_MOTION_STOP, 0, 500);
 
     tick_with_data(500);
-    assert_route_finished(9);
+    assert_route_finished(17);
 }
 
 static void test_return_lane_route(void)
@@ -107,29 +131,38 @@ static void test_return_lane_route(void)
     patrol_route_start_return_lane();
 
     tick_with_data(1000);
-    assert_step(0, CAR_MOTION_FORWARD, 42, 2200);
+    assert_step(0, CAR_MOTION_FORWARD, 42, 2100);
 
-    tick_with_data(1200);
-    tick_with_data(500);
-    assert_step(1, CAR_MOTION_STOP, 0, 500);
+    tick_with_data(1100);
+    tick_with_data(260);
+    assert_step(1, CAR_MOTION_STOP, 0, 260);
 
-    tick_with_data(520);
-    assert_step(2, CAR_MOTION_RIGHT, 32, 520);
+    tick_with_data(420);
+    assert_step(2, CAR_MOTION_RIGHT, 40, 420);
 
-    tick_with_data(1600);
-    assert_step(3, CAR_MOTION_FORWARD, 38, 1600);
+    tick_with_data(140);
+    assert_step(3, CAR_MOTION_RIGHT, 26, 140);
 
-    tick_with_data(520);
-    assert_step(4, CAR_MOTION_LEFT, 32, 520);
+    tick_with_data(1500);
+    assert_step(4, CAR_MOTION_FORWARD, 38, 1500);
+
+    tick_with_data(220);
+    assert_step(5, CAR_MOTION_STOP, 0, 220);
+
+    tick_with_data(420);
+    assert_step(6, CAR_MOTION_LEFT, 40, 420);
+
+    tick_with_data(140);
+    assert_step(7, CAR_MOTION_LEFT, 26, 140);
 
     tick_with_data(2200);
-    assert_step(5, CAR_MOTION_BACKWARD, 35, 2200);
+    assert_step(8, CAR_MOTION_BACKWARD, 35, 2200);
 
     tick_with_data(500);
-    assert_step(6, CAR_MOTION_STOP, 0, 500);
+    assert_step(9, CAR_MOTION_STOP, 0, 500);
 
     tick_with_data(500);
-    assert_route_finished(7);
+    assert_route_finished(10);
 }
 
 int main(void)
