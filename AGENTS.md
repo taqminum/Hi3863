@@ -38,6 +38,14 @@ Important mobile files:
 
 The APK should remain landscape-only. The control page must not scroll; overview/data/management pages may scroll by repositioning existing cards while preserving Open Design interactions. The joystick and speed controls must support independent multi-touch handling.
 
+## Hardware-First App Development
+
+Future Web/APK work must be developed against the real hardware-side code and exposed APIs, not against guessed protocol behavior. Before changing app control, telemetry, device state, patrol, gateway, SLE, Wi-Fi, or cloud-bridge logic, inspect the relevant firmware code under `src/` and the gateway product code under `vendor/BearPi-Pico_H3863/products/ws63e_env_gateway`.
+
+For car-facing behavior, treat `src/application/samples/Farsight/ws63e_env_patrol_car` as the first source of truth. Also search the wider `src/` tree for exposed headers, protocol structs, command parsers, sensor data formats, motor-control limits, SLE/Wi-Fi entry points, and any API names referenced by the app or handoff docs. Use `rg` to confirm actual firmware symbols and payload fields before changing TypeScript contracts.
+
+When the hardware currently exposes only a coarse API, keep the app backward-compatible and document any future finer-grained extension for the firmware teammate. Do not remove existing compatibility payloads until the firmware-side parser and gateway API have been updated and verified.
+
 ## Build, Test, and Development Commands
 
 Run firmware commands from `src/`:

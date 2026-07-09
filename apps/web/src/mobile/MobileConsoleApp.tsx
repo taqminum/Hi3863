@@ -204,7 +204,7 @@ export function MobileConsoleApp() {
       }
       if (error instanceof ApiError && error.status === 0 && connectionMode === "cloud") {
         setCloudApiOnline(false);
-        setNotice("云端 API 暂时不可达，请检查手机网络、域名或服务器状态。");
+        setNotice("云服务器暂时不可达，请检查手机网络、域名或服务器状态。");
         return;
       }
       setNotice(error instanceof Error ? error.message : "请求失败");

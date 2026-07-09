@@ -62,6 +62,48 @@ npm run dev:server
 powershell -ExecutionPolicy Bypass -File deploy/smoke.ps1 -BaseUrl http://localhost:8787 -DeviceKey dev-base-station-key
 ```
 
+## Nginx HTTP 入口
+
+Web 和 APK 应继续使用 HTTPS：`https://www.rxcccccc.icu/ws63/` 与 `https://www.rxcccccc.icu/ws63-api`。BearPi 网关固件当前第一版云上行只支持 HTTP/TCP，不支持 TLS，也不会跟随 `301` 跳转。因此云服务器的 80 端口必须为板端保留 `/ws63-api/` 直连反代入口，不能对整个 `rxcccccc.icu` server block 无条件 `return 301 https://$host$request_uri;`。
+
+当前 nginx 规则应保持这种结构：
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name rxcccccc.icu www.rxcccccc.icu;
+
+    location ^~ /ws63-api/ {
+        proxy_pass http://127.0.0.1:8787/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+```
+
+验证命令：
+
+```powershell
+curl.exe -i http://www.rxcccccc.icu/ws63-api/api/health
+$env:DEVICE_INGEST_KEY="<云端 apps/server/.env 中的密钥>"
+powershell -ExecutionPolicy Bypass -File deploy/smoke.ps1 `
+  -BaseUrl http://www.rxcccccc.icu/ws63-api `
+  -DeviceKey $env:DEVICE_INGEST_KEY
+```
+
+期望 `/ws63-api/api/health` 在 HTTP 下返回 `200 OK`，普通 Web 路径如 `http://www.rxcccccc.icu/ws63/` 仍返回 HTTPS `301`。
+
 ## 环境变量
 
 生产环境的 `apps/server/.env` 应至少包含：

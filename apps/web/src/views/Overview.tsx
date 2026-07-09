@@ -31,7 +31,7 @@ export function Overview({ model }: { model: DashboardViewModel }) {
         <div className="topology-card">
           <div className="node active"><div className="node-icon"><Smartphone /></div><span className="node-label">App 端</span></div>
           <div className="link-line link-active" />
-          <div className="node active"><div className="node-icon"><Cloud /></div><span className="node-label">云 API</span></div>
+          <div className="node active"><div className="node-icon"><Cloud /></div><span className="node-label">云服务器</span></div>
           <div className="link-line link-active"><span className="link-label">TCP</span></div>
           <div className={baseOnline ? "node active" : "node"}><div className="node-icon"><RadioTower /></div><span className="node-label">{model.base?.name ?? "H3863 基站"}</span></div>
           <div className={weakSignal ? "link-line link-warning" : "link-line link-active"}><span className="link-label">{weakSignal ? "SLE弱网" : "SLE"}</span></div>
@@ -54,7 +54,7 @@ export function Overview({ model }: { model: DashboardViewModel }) {
       <div className="data-grid">
         <OverviewDataCard icon={Activity} label="SLE 信号质量" value={model.rssi === undefined ? "--" : String(model.rssi)} unit="dBm" status={weakSignal ? "弱网" : "正常"} tone={weakSignal ? "warning" : "highlight"} values={signalValues} onClick={() => setModal("signal")} />
         <OverviewDataCard icon={Thermometer} label="环境温度" value={model.temperature === undefined ? "--" : model.temperature.toFixed(1)} unit="°C" status={(model.temperature ?? 0) > 32 ? "偏高" : "正常"} tone={(model.temperature ?? 0) > 32 ? "warning" : undefined} values={tempValues} onClick={() => setModal("temp")} />
-        <OverviewDataCard icon={Droplets} label={humidityWarning ? "环境湿度 (预警)" : "环境湿度"} value={model.humidity === undefined ? "--" : model.humidity.toFixed(1)} unit="%RH" status={humidityWarning ? "预警" : "正常"} tone={humidityWarning ? "warning" : undefined} values={humidValues} onClick={() => setModal("humid")} />
+        <OverviewDataCard icon={Droplets} label="环境湿度" value={model.humidity === undefined ? "--" : model.humidity.toFixed(1)} unit="%RH" status={humidityWarning ? "预警" : "正常"} tone={humidityWarning ? "warning" : undefined} values={humidValues} onClick={() => setModal("humid")} />
         <OverviewDataCard icon={Sun} label="环境光照" value={model.lightness === undefined ? "--" : model.lightness.toFixed(0)} unit="lx" status="正常" values={lightValues} onClick={() => setModal("light")} />
       </div>
 

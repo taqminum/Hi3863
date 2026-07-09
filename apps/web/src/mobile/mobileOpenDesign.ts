@@ -19,6 +19,7 @@ import type { ConnectionMode } from "../types";
 
 export type MobileOpenDesignTab = "overview" | "control" | "tasks" | "data" | "manage";
 export type MobileHistoryRange = "1H" | "24H" | "7D";
+export type MobileTopologyStatus = "online" | "warning" | "offline";
 
 export interface MobileOpenDesignSnapshot {
   userLabel: string;
@@ -39,10 +40,17 @@ export interface MobileOpenDesignSnapshot {
   taskTimeline: MobileTaskTimelineItem[];
   agentSummary: string;
   notice: string;
-  cloudApiStatus: "online" | "offline";
+  cloudServerStatus: MobileTopologyStatus;
+  baseStationNodeStatus: MobileTopologyStatus;
+  deviceNodeStatus: MobileTopologyStatus;
+  cloudServerDetail: string;
+  baseStationDetail: string;
+  deviceDetail: string;
+  baseStationAgeLabel: string;
+  deviceAgeLabel: string;
   telemetryStatus: "live" | "stale" | "empty";
   telemetryDetail: string;
-  activeTransportStatus: "online" | "warning" | "offline";
+  activeTransportStatus: MobileTopologyStatus;
   activeTransportLabel: string;
   activeTransportDetail: string;
   wifiSignalLabel: string;
@@ -156,30 +164,62 @@ body {
 }
 #view-overview.active {
   display: grid !important;
-  grid-template-rows: minmax(108px, 0.72fr) minmax(260px, 1.35fr) !important;
-  gap: 16px !important;
+  grid-template-rows: minmax(108px, 0.68fr) auto !important;
+  align-content: start !important;
+  gap: 12px !important;
   height: 100% !important;
   min-height: 0 !important;
+  overflow: hidden !important;
+  padding-top: 14px !important;
+  padding-bottom: 12px !important;
+}
+body[data-active-view="view-overview"] .content-area {
+  overflow: hidden !important;
 }
 #view-overview .dash-top-row {
   min-height: 0 !important;
   margin-bottom: 0 !important;
+  gap: 12px !important;
 }
 #view-overview .topology-card,
 #view-overview .risk-card {
   min-height: 0 !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
 }
 #view-overview .data-grid {
-  height: auto !important;
+  height: clamp(148px, 29vh, 176px) !important;
   min-height: 0 !important;
+  gap: 12px !important;
+  align-self: start !important;
 }
 #view-overview .ov-data-card {
   min-height: 0 !important;
+  padding: 10px !important;
+  border-radius: 12px !important;
+}
+#view-overview .data-top-row-card {
+  gap: 8px !important;
+}
+#view-overview .ov-data-header {
+  gap: 6px !important;
+}
+#view-overview .ov-data-label {
+  font-size: 12px !important;
+  line-height: 1.25 !important;
+}
+#view-overview .ov-data-value {
+  font-size: clamp(20px, 2.6vw, 28px) !important;
+  line-height: 1.05 !important;
+}
+#view-overview .ov-data-unit {
+  font-size: 16px !important;
 }
 #view-overview .ov-chart-container {
   flex: 1 1 auto !important;
-  min-height: 90px !important;
-  height: auto !important;
+  min-height: 58px !important;
+  height: 68px !important;
+  margin-top: 4px !important;
 }
 .view-section.active:not(#view-overview):not(#view-control) {
   min-height: 100% !important;
@@ -1140,6 +1180,16 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const links = Array.from(document.querySelectorAll(".topology-card .link-line"));
     const labels = Array.from(document.querySelectorAll(".topology-card .link-label"));
     card?.classList.toggle("ws63-topology-compact", snapshot.connectionMode !== "cloud");
+    if (nodes[1]) {
+      const label = nodes[1].querySelector(".node-label");
+      if (label) label.textContent = "云服务器";
+    }
+    const nodeStatuses = [
+      "online",
+      snapshot.cloudServerStatus || "offline",
+      snapshot.baseStationNodeStatus || "offline",
+      snapshot.deviceNodeStatus || "offline"
+    ];
     card?.setAttribute("title", "查看连接详情");
     nodes.forEach((node, index) => {
       node.classList.remove("active", "ws63-node-warning", "ws63-node-offline", "ws63-node-hidden");
@@ -1149,14 +1199,16 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
         node.classList.add("ws63-node-hidden");
         return;
       }
-      const online = index === 0
-        || (index === 1 && snapshot.connectionMode === "cloud" && snapshot.activeTransportStatus === "online")
-        || (index === 2 && snapshot.connectionMode !== "car-direct" && snapshot.activeTransportStatus !== "offline")
-        || (index === 3 && snapshot.deviceStatus !== "离线");
-      if (online) node.classList.add("active");
+      const status = nodeStatuses[index] || "offline";
+      if (status === "online") node.classList.add("active");
+      else if (status === "warning") node.classList.add("ws63-node-warning");
       else node.classList.add("ws63-node-offline");
-      if (snapshot.activeTransportStatus === "warning" && index >= 2) node.classList.add("ws63-node-warning");
     });
+    const linkStatuses = snapshot.connectionMode === "cloud"
+      ? [snapshot.cloudServerStatus, snapshot.baseStationNodeStatus, snapshot.deviceNodeStatus]
+      : snapshot.connectionMode === "gateway"
+        ? ["offline", snapshot.baseStationNodeStatus, snapshot.deviceNodeStatus]
+        : ["offline", "offline", snapshot.deviceNodeStatus];
     links.forEach((link, index) => {
       link.classList.remove("link-active", "link-warning", "ws63-link-warning", "ws63-link-offline", "ws63-link-hidden");
       const hidden = (snapshot.connectionMode === "gateway" && index === 0)
@@ -1165,8 +1217,9 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
         link.classList.add("ws63-link-hidden");
         return;
       }
-      if (snapshot.activeTransportStatus === "online") link.classList.add("link-active");
-      else if (snapshot.activeTransportStatus === "warning") link.classList.add("ws63-link-warning");
+      const status = linkStatuses[index] || "offline";
+      if (status === "online") link.classList.add("link-active");
+      else if (status === "warning") link.classList.add("ws63-link-warning");
       else link.classList.add("ws63-link-offline");
     });
     labels.forEach((label, index) => {
@@ -1209,7 +1262,9 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
       infoGrid([
         ["连接方式", modeLabel],
         ["连接状态", stateLabel],
-        ["云 API", snapshot.cloudApiStatus === "online" ? "已连接" : "不可达"],
+        ["云服务器", snapshot.cloudServerStatus === "online" ? "已连接" : "不可达"],
+        ["基站心跳", snapshot.baseStationAgeLabel || "--"],
+        ["小车遥测", snapshot.deviceAgeLabel || "--"],
         ["实时遥测", snapshot.telemetryDetail],
         ["信号强度", snapshot.wifiSignalLabel || snapshot.rssiLabel],
         ["数据速度", snapshot.wifiSpeedLabel || "--"],
@@ -1335,9 +1390,12 @@ function injectBeforeOpenDesignScript(html: string, scriptTag: string, snippet: 
 }
 
 export function buildMobileOpenDesignSrcDoc(html: string): string {
-  const withPatch = html.includes("ws63-mobile-landscape-patch")
-    ? html
-    : injectBeforeCloseTag(html, "</head>", landscapePatch);
+  const normalizedHtml = html
+    .replace(/云\s*API/g, "云服务器")
+    .replace(/环境湿度\s*[（(](?:预警|预测)[）)]/g, "环境湿度");
+  const withPatch = normalizedHtml.includes("ws63-mobile-landscape-patch")
+    ? normalizedHtml
+    : injectBeforeCloseTag(normalizedHtml, "</head>", landscapePatch);
   const withTouchIsolation = withPatch.includes("ws63-mobile-touch-isolation")
     ? withPatch
     : injectBeforeOpenDesignScript(withPatch, "<script src=\"https://unpkg.com/lucide@latest\"></script>", touchIsolationScript);
@@ -1524,14 +1582,38 @@ function telemetryFreshness(latest?: Reading | null): {
   return { status: "stale", detail: `实时遥测延迟 ${ageLabel(ageMs)}`, ageMs };
 }
 
+function isoAgeMs(value?: string | null): number {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? Math.max(0, Date.now() - parsed) : Number.POSITIVE_INFINITY;
+}
+
+function topologyStatusFromAge(ageMs: number): MobileTopologyStatus {
+  if (ageMs < 90_000) return "online";
+  if (ageMs < 5 * 60_000) return "warning";
+  return "offline";
+}
+
+function topologyAgeLabel(ageMs: number, emptyLabel: string): string {
+  if (!Number.isFinite(ageMs)) return emptyLabel;
+  return `${ageLabel(ageMs)}前`;
+}
+
+function topologyDetail(name: string, status: MobileTopologyStatus, ageMs: number, emptyLabel: string): string {
+  if (!Number.isFinite(ageMs)) return `${name}${emptyLabel}`;
+  if (status === "online") return `${name}最近 ${ageLabel(ageMs)}内有数据`;
+  if (status === "warning") return `${name}数据延迟 ${ageLabel(ageMs)}`;
+  return `${name}超过 ${ageLabel(ageMs)}未更新`;
+}
+
 function transportName(mode: ConnectionMode): string {
   if (mode === "gateway") return "基站";
   if (mode === "car-direct") return "小车";
-  return "云端";
+  return "云服务器";
 }
 
 function activeTransport(input: MobileOpenDesignSnapshotInput, telemetry: ReturnType<typeof telemetryFreshness>): {
-  status: "online" | "warning" | "offline";
+  status: MobileTopologyStatus;
   label: string;
   detail: string;
 } {
@@ -1546,21 +1628,23 @@ function activeTransport(input: MobileOpenDesignSnapshotInput, telemetry: Return
     if (online) {
       return {
         status: "online",
-        label: "云端已连接",
-        detail: `云端 HTTPS 正常。${telemetry.detail}。`
+        label: "云服务器已连接",
+        detail: `云服务器 HTTPS 正常。${telemetry.detail}。`
       };
     }
     return {
       status: "offline",
-      label: "云端未连接",
-      detail: input.notice || "云端 API 暂时不可达，历史曲线仍可来自手机本地缓存。"
+      label: "云服务器未连接",
+      detail: input.notice || "云服务器暂时不可达，历史曲线仍可来自手机本地缓存。"
     };
   }
   if (input.connectionMode === "gateway") {
+    if (hasError) return { status: "offline", label: shortLabel, detail: input.notice };
     if (connected) return { status: "online", label: shortLabel, detail: "已通过基站 Wi-Fi/UDP 获取小车实时遥测。" };
     if (telemetry.status !== "empty") return { status: "warning", label: delayLabel, detail: input.notice || "基站最近有数据但已超时，建议点击右上角 Wi-Fi 重新请求连接。" };
     return { status: "offline", label: shortLabel, detail: input.notice || "未收到基站实时遥测，点击右上角 Wi-Fi 可请求连接基站热点。" };
   }
+  if (hasError) return { status: "offline", label: shortLabel, detail: input.notice };
   if (connected) return { status: "online", label: shortLabel, detail: "已通过小车直连链路获取实时遥测。" };
   if (telemetry.status !== "empty") return { status: "warning", label: delayLabel, detail: input.notice || "小车直连最近有数据但已超时，建议重新连接小车热点。" };
   return { status: "offline", label: shortLabel, detail: input.notice || "未收到小车直连实时遥测，点击右上角 Wi-Fi 可请求连接小车热点。" };
@@ -1669,6 +1753,22 @@ export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInp
   const lightnessSeries = overviewSeries(input.readings, "lightness");
   const rssiSeries = overviewSeries(input.readings, "rssi");
   const transport = activeTransport(input, telemetry);
+  const cloudServerStatus: MobileTopologyStatus =
+    input.connectionMode === "cloud" && input.cloudApiOnline ? "online" : "offline";
+  const latestTelemetryAge = latest ? latestAgeMs(latest) : Number.POSITIVE_INFINITY;
+  const baseHeartbeatAge = Math.min(isoAgeMs(base?.last_heartbeat), latestTelemetryAge);
+  const deviceTelemetryAge = Math.min(isoAgeMs(input.selectedDevice?.last_seen), latestTelemetryAge);
+  const localTelemetryAge = hasBlockingRealtimeError ? Number.POSITIVE_INFINITY : telemetry.ageMs;
+  const baseStationAge = input.connectionMode === "cloud"
+    ? baseHeartbeatAge
+    : input.connectionMode === "gateway"
+      ? localTelemetryAge
+      : Number.POSITIVE_INFINITY;
+  const deviceAge = input.connectionMode === "cloud" ? deviceTelemetryAge : localTelemetryAge;
+  const baseStationNodeStatus: MobileTopologyStatus = input.connectionMode === "car-direct"
+    ? "offline"
+    : topologyStatusFromAge(baseStationAge);
+  const deviceNodeStatus: MobileTopologyStatus = topologyStatusFromAge(deviceAge);
 
   return {
     userLabel: input.user.displayName || input.user.username,
@@ -1689,7 +1789,14 @@ export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInp
     taskTimeline: buildTaskTimeline(task),
     agentSummary: report.summary,
     notice: input.notice,
-    cloudApiStatus: input.connectionMode === "cloud" && input.cloudApiOnline ? "online" : "offline",
+    cloudServerStatus,
+    baseStationNodeStatus,
+    deviceNodeStatus,
+    cloudServerDetail: cloudServerStatus === "online" ? "云服务器 HTTPS 正常" : "云服务器不可达",
+    baseStationDetail: topologyDetail("基站", baseStationNodeStatus, baseStationAge, "无心跳"),
+    deviceDetail: topologyDetail("小车", deviceNodeStatus, deviceAge, "无遥测"),
+    baseStationAgeLabel: topologyAgeLabel(baseStationAge, "无基站心跳"),
+    deviceAgeLabel: topologyAgeLabel(deviceAge, "无小车遥测"),
     telemetryStatus: telemetry.status,
     telemetryDetail: telemetry.detail,
     activeTransportStatus: transport.status,

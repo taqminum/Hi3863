@@ -149,7 +149,7 @@ async function request<T>(path: string, token: string | null, options: RequestIn
       }
     });
   } catch {
-    throw new ApiError("无法连接云端 API，请检查网络、域名或服务器状态", 0);
+    throw new ApiError("无法连接云服务器，请检查网络、域名或服务器状态", 0);
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -170,7 +170,7 @@ async function requestText(path: string, token: string | null, options: RequestI
       }
     });
   } catch {
-    throw new ApiError("无法连接云端 API，请检查网络、域名或服务器状态", 0);
+    throw new ApiError("无法连接云服务器，请检查网络、域名或服务器状态", 0);
   }
   const data = await response.text();
   if (!response.ok) {

@@ -164,12 +164,29 @@ test("joystick speed reader converts Open Design m/s display to percent", () => 
   assert.match(result, /if \(speed <= 2\.5\) return Math\.max\(0, Math\.min\(100, Math\.round\(\(speed \/ 2\.0\) \* 100\)\)\)/);
 });
 
-test("stretches overview content to avoid empty lower screen on landscape phones", () => {
+test("keeps overview cards visible without scrolling on landscape phones", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
   assert.match(result, /#view-overview\.active/);
-  assert.match(result, /grid-template-rows: minmax\(108px, 0\.72fr\) minmax\(260px, 1\.35fr\) !important/);
+  assert.match(result, /grid-template-rows: minmax\(108px, 0\.68fr\) auto !important/);
+  assert.match(result, /body\[data-active-view="view-overview"\] \.content-area/);
+  assert.match(result, /overflow: hidden !important/);
   assert.match(result, /#view-overview \.data-grid/);
-  assert.match(result, /height: auto !important/);
+  assert.match(result, /height: clamp\(148px, 29vh, 176px\) !important/);
+  assert.match(result, /#view-overview \.ov-chart-container/);
+  assert.match(result, /height: 68px !important/);
+});
+
+test("uses cloud server naming and plain humidity label in mobile Open Design source", () => {
+  const result = buildMobileOpenDesignSrcDoc(`
+    <html><body>
+      <span class="node-label">云 API</span>
+      <span class="ov-data-label">环境湿度 (预警)</span>
+    </body></html>
+  `);
+
+  assert.match(result, /云服务器/);
+  assert.match(result, /环境湿度/);
+  assert.doesNotMatch(result, /云 API|云API|环境湿度 \(预警\)|环境湿度\(预测\)/);
 });
 
 test("reserves permanent right system area and moves speed value upward", () => {
@@ -213,7 +230,7 @@ test("builds readable fallback snapshot when telemetry is empty", () => {
   assert.equal(snapshot.detailSeries.second.temperature.length, 60);
   assert.equal(snapshot.detailSeries.minute.temperature.length, 60);
   assert.equal(snapshot.activeTransportStatus, "offline");
-  assert.equal(snapshot.activeTransportLabel, "云端未连接");
+  assert.equal(snapshot.activeTransportLabel, "云服务器未连接");
 });
 
 test("uses cache for charts but not for disconnected realtime overview values", () => {
@@ -254,7 +271,82 @@ test("uses cache for charts but not for disconnected realtime overview values", 
   assert.equal(snapshot.series.temperature.some((value) => value === 31), true);
 });
 
-test("shows cloud API connected separately when telemetry is empty", () => {
+test("marks gateway topology warning when local telemetry is delayed", () => {
+  const user: User = { id: "u1", username: "admin", displayName: "admin", role: "admin" };
+  const delayedReading: Reading = {
+    id: "gateway-delayed",
+    deviceId: "ws63-car-001",
+    baseStationId: "sle-base-001",
+    temperature: 27,
+    humidity: 64,
+    lightness: 500,
+    gear: "D",
+    direction: "forward",
+    status: "patrolling",
+    linkMode: "sle",
+    rssi: -50,
+    cachedCount: 0,
+    recordedAt: new Date(Date.now() - 2 * 60_000).toISOString()
+  };
+  const snapshot = buildMobileOpenDesignSnapshot({
+    user,
+    connectionMode: "gateway",
+    historyRange: "1H",
+    devices: [],
+    baseStations: [],
+    readings: [delayedReading],
+    realtimeReading: delayedReading,
+    commands: [],
+    tasks: [],
+    reports: [],
+    audits: [],
+    notice: ""
+  });
+
+  assert.equal(snapshot.cloudServerStatus, "offline");
+  assert.equal(snapshot.baseStationNodeStatus, "warning");
+  assert.equal(snapshot.deviceNodeStatus, "warning");
+  assert.equal(snapshot.activeTransportStatus, "warning");
+});
+
+test("marks car-direct topology offline when realtime polling has an error", () => {
+  const user: User = { id: "u1", username: "admin", displayName: "admin", role: "admin" };
+  const liveReading: Reading = {
+    id: "car-live-but-error",
+    deviceId: "ws63-car-001",
+    baseStationId: "sle-base-001",
+    temperature: 27,
+    humidity: 64,
+    lightness: 500,
+    gear: "D",
+    direction: "forward",
+    status: "patrolling",
+    linkMode: "wifi",
+    rssi: -50,
+    cachedCount: 0,
+    recordedAt: new Date(Date.now() - 10_000).toISOString()
+  };
+  const snapshot = buildMobileOpenDesignSnapshot({
+    user,
+    connectionMode: "car-direct",
+    historyRange: "1H",
+    devices: [],
+    baseStations: [],
+    readings: [liveReading],
+    realtimeReading: liveReading,
+    commands: [],
+    tasks: [],
+    reports: [],
+    audits: [],
+    notice: "小车直连连接失败"
+  });
+
+  assert.equal(snapshot.baseStationNodeStatus, "offline");
+  assert.equal(snapshot.deviceNodeStatus, "offline");
+  assert.equal(snapshot.activeTransportStatus, "offline");
+});
+
+test("shows cloud server connected while base station and car are offline without fresh telemetry", () => {
   const user: User = { id: "u1", username: "admin", displayName: "admin", role: "admin" };
   const snapshot = buildMobileOpenDesignSnapshot({
     user,
@@ -272,9 +364,11 @@ test("shows cloud API connected separately when telemetry is empty", () => {
     notice: ""
   });
 
-  assert.equal(snapshot.cloudApiStatus, "online");
+  assert.equal(snapshot.cloudServerStatus, "online");
+  assert.equal(snapshot.baseStationNodeStatus, "offline");
+  assert.equal(snapshot.deviceNodeStatus, "offline");
   assert.equal(snapshot.activeTransportStatus, "online");
-  assert.equal(snapshot.activeTransportLabel, "云端已连接");
+  assert.equal(snapshot.activeTransportLabel, "云服务器已连接");
   assert.equal(snapshot.telemetryStatus, "empty");
   assert.match(snapshot.telemetryDetail, /尚未收到实时遥测/);
   assert.match(snapshot.temperatureLabel, /^--/);
@@ -313,9 +407,11 @@ test("keeps cloud connected while stale telemetry is reported separately", () =>
     notice: ""
   });
 
-  assert.equal(snapshot.cloudApiStatus, "online");
+  assert.equal(snapshot.cloudServerStatus, "online");
+  assert.equal(snapshot.baseStationNodeStatus, "offline");
+  assert.equal(snapshot.deviceNodeStatus, "offline");
   assert.equal(snapshot.activeTransportStatus, "online");
-  assert.equal(snapshot.activeTransportLabel, "云端已连接");
+  assert.equal(snapshot.activeTransportLabel, "云服务器已连接");
   assert.equal(snapshot.telemetryStatus, "stale");
   assert.match(snapshot.telemetryDetail, /实时遥测延迟/);
   assert.match(snapshot.temperatureLabel, /^--/);
@@ -354,7 +450,9 @@ test("shows live telemetry when cloud reading is fresh", () => {
     notice: ""
   });
 
-  assert.equal(snapshot.cloudApiStatus, "online");
+  assert.equal(snapshot.cloudServerStatus, "online");
+  assert.equal(snapshot.baseStationNodeStatus, "online");
+  assert.equal(snapshot.deviceNodeStatus, "online");
   assert.equal(snapshot.telemetryStatus, "live");
   assert.equal(snapshot.telemetryDetail, "实时遥测正常");
   assert.equal(snapshot.rssiLabel, "-45 dBm");

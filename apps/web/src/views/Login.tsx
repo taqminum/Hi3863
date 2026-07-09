@@ -22,7 +22,7 @@ export function Login({ onLogin }: { onLogin: (token: string, user: User) => voi
           <h1>WS63E 控制台</h1>
           <p>星闪基站上云 · 环境巡检小车 · Web / APK 同源控制</p>
           <div className="login-link-map">
-            <span>APP</span><i /><span><Cloud width={16} height={16} />云 API</span><i /><span>H3863</span><i /><span>小车</span>
+            <span>APP</span><i /><span><Cloud width={16} height={16} />云服务器</span><i /><span>H3863</span><i /><span>小车</span>
           </div>
         </div>
         <form className="login-panel" onSubmit={async (event) => {
