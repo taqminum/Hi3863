@@ -66,11 +66,28 @@ check("APK has mobile Open Design route", () => {
   assertContains("mobile Open Design route", content, "side-nav");
 });
 
-check("APK patrol tab is React-owned", () => {
+check("APK patrol tab uses Open Design while React page is retained", () => {
+  const mobileConsole = read("apps/web/src/mobile/MobileConsoleApp.tsx");
+  const mobileOpenDesign = read("apps/web/src/mobile/mobileOpenDesign.ts");
+  assertContains(
+    "mobile patrol feature flag",
+    mobileConsole,
+    "const ENABLE_REACT_PATROL_PAGE = false"
+  );
   assertContains(
     "mobile patrol React page",
-    read("apps/web/src/mobile/MobileConsoleApp.tsx"),
+    mobileConsole,
     "MobilePatrolPage"
+  );
+  assertContains(
+    "Open Design patrol queue",
+    mobileOpenDesign,
+    "updateTaskQueue(snapshot)"
+  );
+  assertContains(
+    "Open Design patrol creation",
+    mobileOpenDesign,
+    'send("create-patrol", { template: "standard" })'
   );
   assertContains(
     "mobile patrol model",

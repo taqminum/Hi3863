@@ -45,6 +45,8 @@ import {
 } from "./patrol/mobilePatrolModel";
 import "./patrol/mobilePatrol.css";
 
+const ENABLE_REACT_PATROL_PAGE = false;
+
 const mobileFallbackDevice: DeviceRecord = {
   id: "ws63-car-001",
   name: "WS63E-巡检车-01",
@@ -511,6 +513,10 @@ export function MobileConsoleApp() {
         }
         return;
       }
+      if (message.type === "create-patrol") {
+        await createMobilePatrol();
+        return;
+      }
       if (message.type === "refresh-agent") {
         const range = rangeForCache();
         const summary = summarizeReadingsForAgent(activeReadings, { ...range, maxPoints: 100 });
@@ -532,7 +538,7 @@ export function MobileConsoleApp() {
         }
       }
     });
-  }, [activeReadings, changeConnectionMode, connectionMode, guarded, logout, postSnapshot, rangeForCache, refresh, selectedDevice.base_station_id, selectedDevice.id, token]);
+  }, [activeReadings, changeConnectionMode, connectionMode, createMobilePatrol, guarded, logout, postSnapshot, rangeForCache, refresh, selectedDevice.base_station_id, selectedDevice.id, token]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent<MobileOpenDesignToHostMessage>) {
@@ -562,7 +568,7 @@ export function MobileConsoleApp() {
         srcDoc={srcDoc}
         onLoad={postSnapshot}
       />
-      {activeTab === "tasks" ? (
+      {ENABLE_REACT_PATROL_PAGE && activeTab === "tasks" ? (
         <MobilePatrolPage
           model={patrolModel}
           taskName={patrolTaskName}

@@ -15,6 +15,7 @@ test("injects mobile landscape patch without removing Open Design chart function
 test("injects real interaction bridge for joystick repeat, task creation and charts", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
   assert.match(result, /setInterval\(\(\) => repeatDrive\(false\), DRIVE_REPEAT_MS\)/);
+  assert.match(result, /send\("create-patrol", \{ template: "standard" \}\)/);
   assert.match(result, /updateChart\("ov-chart-temp", snapshot\.series\.temperature\)/);
   assert.match(result, /window\.Chart\.getChart/);
 });
@@ -36,10 +37,14 @@ test("source Open Design tasks tab uses safe placeholders instead of fixed mock 
   assert.doesNotMatch(tasksSection, /onclick="alert/);
 });
 
-test("bridge still reports tasks tab activation for the React patrol overlay", () => {
+test("bridge reports tasks tab activation while Open Design renders patrol content", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
   assert.match(result, /send\("active-tab", \{ tab: map\[target\] \}\)/);
   assert.match(result, /"view-tasks": "tasks"/);
+  assert.match(result, /function updateTaskQueue\(snapshot\)/);
+  assert.match(result, /function updateTaskTimeline\(snapshot\)/);
+  assert.match(result, /updateTaskQueue\(snapshot\)/);
+  assert.match(result, /updateTaskTimeline\(snapshot\)/);
 });
 
 test("mobile landscape patch gives tasks tab a phone-friendly two-column layout", () => {
@@ -50,9 +55,10 @@ test("mobile landscape patch gives tasks tab a phone-friendly two-column layout"
   assert.match(result, /#view-tasks \.task-panel:nth-child\(3\)/);
 });
 
-test("iframe patrol create handler is no longer the primary React patrol path", () => {
+test("iframe patrol create handler suppresses Open Design mock behavior", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
-  assert.doesNotMatch(result, /send\("create-patrol", \{ template: "standard" \}\)/);
+  assert.match(result, /event\.stopImmediatePropagation\(\)/);
+  assert.match(result, /send\("create-patrol", \{ template: "standard" \}\)/);
 });
 
 
