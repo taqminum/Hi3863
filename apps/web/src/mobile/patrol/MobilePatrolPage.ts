@@ -32,7 +32,18 @@ export function MobilePatrolPage({
       createElement(
         "section",
         { className: "mobile-patrol-panel" },
-        createElement("header", { className: "mobile-patrol-panel-header" }, createElement("span", null, "新建任务"), createElement(PlusCircle, { size: 16 })),
+        createElement(
+          "header",
+          { className: "mobile-patrol-panel-header" },
+          createElement("span", null, "新建任务"),
+          createElement(
+            "div",
+            { className: "mobile-patrol-header-actions" },
+            createElement("button", { type: "button", onClick: onRefresh, title: "刷新" }, createElement(RefreshCcw, { size: 14 }), "刷新"),
+            createElement("button", { type: "button", onClick: onStop, title: "停止" }, createElement(Square, { size: 14 }), "停止"),
+            createElement(PlusCircle, { size: 16 })
+          )
+        ),
         createElement(
           "div",
           { className: "mobile-patrol-panel-body" },
@@ -71,12 +82,6 @@ export function MobilePatrolPage({
             { className: "mobile-patrol-primary", onClick: onCreate, disabled: !model.canCreate },
             createElement(Send, { size: 16 }),
             model.canCreate ? model.primaryActionLabel : model.disabledReason
-          ),
-          createElement(
-            "div",
-            { className: "mobile-patrol-actions" },
-            createElement("button", { type: "button", onClick: onRefresh }, createElement(RefreshCcw, { size: 14 }), "刷新"),
-            createElement("button", { type: "button", onClick: onStop }, createElement(Square, { size: 14 }), "停止")
           )
         )
       ),
