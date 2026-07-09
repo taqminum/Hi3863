@@ -33,6 +33,9 @@ import {
   buildLocalPatrolTask,
   defaultMobileConnectionMode,
   mobileSessionAllowsLocalControl,
+  patrolTemplateDurationMs,
+  reconcileLocalPatrolTasks,
+  selectMobilePatrolTemplate,
   selectMobileReadings,
   shouldAutoFallbackGatewayToCarDirect,
   shouldPollLocalTelemetry
@@ -96,6 +99,14 @@ function mergeReadingsById(...groups: Reading[][]): Reading[] {
     byId.set(reading.id, reading);
   }
   return [...byId.values()].sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
+}
+
+function failLocalPatrolTask(tasks: PatrolTask[], taskId: string): PatrolTask[] {
+  return tasks.map((task) => task.id === taskId ? {
+    ...task,
+    status: "failed",
+    finished_at: new Date().toISOString()
+  } : task);
 }
 
 function readStoredUser(): User | null {
@@ -246,6 +257,13 @@ export function MobileConsoleApp() {
     const timer = window.setInterval(() => void guarded(() => refresh()), 3000);
     return () => window.clearInterval(timer);
   }, [connectionMode, guarded, refresh, token]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setTasks((current) => reconcileLocalPatrolTasks(current));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (connectionMode === "cloud") return;
@@ -420,40 +438,56 @@ export function MobileConsoleApp() {
         return;
       }
       if (message.type === "create-patrol") {
+        const template = selectMobilePatrolTemplate(message.template);
         if (connectionMode === "gateway") {
+          const startedAt = new Date().toISOString();
+          const taskId = `local-task-${Date.parse(startedAt) || Date.now()}`;
           lastLocalControlAtRef.current = Date.now();
-          await gatewayApi.sendControl({ cmd: "auto_start" });
           setTasks((current) => buildLocalPatrolTask({
             currentTasks: current,
             deviceId: selectedDevice.id,
             baseStationId: selectedDevice.base_station_id,
-            mode: "gateway"
+            mode: "gateway",
+            templateId: template.id,
+            now: startedAt
           }));
-          setNotice("已向星闪基站发送自动巡检启动指令");
+          setNotice(`已向星闪基站下发${template.name}`);
+          try {
+            lastLocalControlAtRef.current = Date.now();
+            await gatewayApi.sendControl({ cmd: template.firmwareCommand });
+          } catch (error) {
+            setTasks((current) => failLocalPatrolTask(current, taskId));
+            throw error;
+          }
           return;
         }
         if (connectionMode === "car-direct") {
-          await localCarApi.send({ cmd: "auto_start" });
+          const startedAt = new Date().toISOString();
+          const taskId = `local-task-${Date.parse(startedAt) || Date.now()}`;
           setTasks((current) => buildLocalPatrolTask({
             currentTasks: current,
             deviceId: selectedDevice.id,
             baseStationId: selectedDevice.base_station_id,
-            mode: "car-direct"
+            mode: "car-direct",
+            templateId: template.id,
+            now: startedAt
           }));
-          setNotice("已向小车直连发送自动巡检启动指令");
+          setNotice(`已向小车直连下发${template.name}`);
+          try {
+            lastLocalControlAtRef.current = Date.now();
+            await localCarApi.send({ cmd: template.firmwareCommand });
+          } catch (error) {
+            setTasks((current) => failLocalPatrolTask(current, taskId));
+            throw error;
+          }
           return;
         }
         if (!token || token.startsWith("local-demo:")) return;
         await api.createPatrol(token, {
           deviceId: selectedDevice.id,
           baseStationId: selectedDevice.base_station_id,
-          name: "APK 标准巡检",
-          steps: [
-            { action: "forward", speed: 50, durationMs: 1200 },
-            { action: "left", speed: 40, durationMs: 500 },
-            { action: "forward", speed: 45, durationMs: 1000 },
-            { action: "stop", durationMs: 0 }
-          ]
+          name: `APK ${template.name}`,
+          steps: [{ action: template.firmwareCommand, speed: 0, durationMs: patrolTemplateDurationMs(template) }]
         });
         await refresh();
         return;

@@ -333,7 +333,7 @@ export function ingestTelemetryBatch(payload: BaseStationTelemetry): { readings:
 
 export function createCommand(input: ControlInput & { deviceId: string; baseStationId: string; userId: string }): unknown {
   const id = `cmd-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const speed = input.action === "stop" || input.action === "drive" || input.action === "auto_start" || input.action === "auto_stop"
+  const speed = input.action === "stop" || input.action === "drive" || input.action === "auto_start" || input.action === "auto_return" || input.action === "auto_stop"
     ? 0
     : Math.max(0, Math.min(100, Math.round(input.speed)));
   const payload = toCarControlPayload({

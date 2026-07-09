@@ -11,6 +11,7 @@ extern "C" {
 
 void patrol_route_init(void);
 void patrol_route_start(void);
+void patrol_route_start_return_lane(void);
 void patrol_route_stop(void);
 void patrol_route_tick(uint32_t elapsed_ms, env_data_t *data);
 

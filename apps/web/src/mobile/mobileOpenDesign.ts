@@ -13,6 +13,7 @@ import {
   bucketMsForGranularity,
   buildTimeSeries,
   durationMsForGranularity,
+  sampleReadingsByInterval,
   type SeriesGranularity
 } from "../historySeries.ts";
 import type { ConnectionMode } from "../types";
@@ -101,7 +102,7 @@ export type MobileOpenDesignToHostMessage =
   | { source: "ws63-mobile-open-design"; type: "connection-mode"; mode: ConnectionMode }
   | { source: "ws63-mobile-open-design"; type: "connect-network" }
   | { source: "ws63-mobile-open-design"; type: "history-range"; range: MobileHistoryRange }
-  | { source: "ws63-mobile-open-design"; type: "create-patrol"; template: "standard" }
+  | { source: "ws63-mobile-open-design"; type: "create-patrol"; template: "closed-loop" | "return-lane" }
   | { source: "ws63-mobile-open-design"; type: "refresh-agent" }
   | { source: "ws63-mobile-open-design"; type: "logout" };
 
@@ -1149,7 +1150,9 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      send("create-patrol", { template: "standard" });
+      const templateNode = document.getElementById("ws63-patrol-template");
+      const template = templateNode instanceof HTMLSelectElement ? templateNode.value : "closed-loop";
+      send("create-patrol", { template });
     }, true);
     document.querySelector(".agent-card")?.addEventListener("click", () => send("refresh-agent"));
   }
@@ -1484,8 +1487,12 @@ function formatTaskStep(step: { action?: string; speed?: number; durationMs?: nu
 
 function taskDetail(task: PatrolTask): string {
   const steps = parseTaskSteps(task);
-  if (steps.length === 0) return "等待基站执行路线";
+  if (steps.length === 0) return "等待基站执行巡检路线";
   return steps.slice(0, 4).map(formatTaskStep).join(" -> ");
+}
+
+function isLocalPatrolTask(task: PatrolTask): boolean {
+  return task.id.startsWith("local-task-");
 }
 
 function buildTaskCards(tasks: PatrolTask[]): MobileTaskCard[] {
@@ -1503,9 +1510,9 @@ function buildTaskCards(tasks: PatrolTask[]): MobileTaskCard[] {
 function buildTaskTimeline(task?: PatrolTask): MobileTaskTimelineItem[] {
   if (!task) {
     return [
-      { title: "等待创建巡检任务", meta: "云端、基站或小车直连均可发起", state: "idle" },
+      { title: "等待创建巡检任务", meta: "可选择闭合环线或折返通道", state: "idle" },
       { title: "等待基站拉取", meta: "任务创建后显示真实状态", state: "idle" },
-      { title: "等待线路执行", meta: "执行进度由基站回执更新", state: "idle" },
+      { title: "等待线路执行", meta: "向固件下发所选路线命令", state: "idle" },
       { title: "等待完成回执", meta: "完成或失败后在此处显示结果", state: "idle" }
     ];
   }
@@ -1522,15 +1529,23 @@ function buildTaskTimeline(task?: PatrolTask): MobileTaskTimelineItem[] {
   const finished = ["completed", "failed"].includes(task.status);
   return [
     { title: "任务已创建", meta: taskTimeLabel(task), state: "done" },
-    { title: "基站已拉取", meta: task.status === "pending" ? "等待巡检桥接或基站拉取" : "任务已进入基站侧队列", state: pulled ? "done" : "idle" },
     {
-      title: "线路执行中",
+      title: isLocalPatrolTask(task) ? "本地指令已发送" : "基站已拉取",
+      meta: task.status === "pending" ? "等待巡检桥接或基站拉取" : isLocalPatrolTask(task) ? "已向固件下发所选路线命令" : "任务已进入基站侧队列",
+      state: pulled || isLocalPatrolTask(task) ? "done" : "idle"
+    },
+    {
+      title: "巡检路线执行",
       meta: taskDetail(task),
       state: task.status === "failed" ? "error" : running && !finished ? "active" : running ? "done" : "idle"
     },
     {
       title: "完成回执",
-      meta: task.status === "failed" ? "执行失败，请检查基站和小车链路" : task.finished_at ? taskTimeLabel(task) : "等待完成",
+      meta: task.status === "failed"
+        ? "执行失败，请检查基站和小车链路"
+        : task.finished_at
+          ? isLocalPatrolTask(task) ? `${taskTimeLabel(task)} 手机端按路线时长推断` : taskTimeLabel(task)
+          : "等待完成",
       state: task.status === "failed" ? "error" : task.status === "completed" ? "done" : "idle"
     }
   ];
@@ -1737,7 +1752,8 @@ function detailSeriesGroup(readings: Reading[], granularity: SeriesGranularity) 
 
 export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInput): MobileOpenDesignSnapshot {
   const latest = input.realtimeReading ?? null;
-  const latestForHistory = input.readings.at(-1);
+  const sampledReadings = sampleReadingsByInterval(input.readings, 1000);
+  const latestForHistory = sampledReadings.at(-1);
   const base = input.baseStations.find((item) => item.id === input.selectedDevice?.base_station_id) ?? input.baseStations[0];
   const latestReport = input.reports[0];
   const report = normalizeAgentReport(latestReport);
@@ -1748,10 +1764,10 @@ export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInp
   const hasRealtime = telemetry.status === "live" && !hasBlockingRealtimeError;
   const rssi = hasRealtime ? latest?.rssi : undefined;
   const cachedCount = latestForHistory?.cachedCount ?? base?.cached_count ?? 0;
-  const temperatureSeries = overviewSeries(input.readings, "temperature");
-  const humiditySeries = overviewSeries(input.readings, "humidity");
-  const lightnessSeries = overviewSeries(input.readings, "lightness");
-  const rssiSeries = overviewSeries(input.readings, "rssi");
+  const temperatureSeries = overviewSeries(sampledReadings, "temperature");
+  const humiditySeries = overviewSeries(sampledReadings, "humidity");
+  const lightnessSeries = overviewSeries(sampledReadings, "lightness");
+  const rssiSeries = overviewSeries(sampledReadings, "rssi");
   const transport = activeTransport(input, telemetry);
   const cloudServerStatus: MobileTopologyStatus =
     input.connectionMode === "cloud" && input.cloudApiOnline ? "online" : "offline";
@@ -1818,10 +1834,10 @@ export function buildMobileOpenDesignSnapshot(input: MobileOpenDesignSnapshotInp
       lightness: lightnessSeries.map((point) => point.value)
     },
     detailSeries: {
-      second: detailSeriesGroup(input.readings, "second"),
-      minute: detailSeriesGroup(input.readings, "minute"),
-      hour: detailSeriesGroup(input.readings, "hour"),
-      day: detailSeriesGroup(input.readings, "day")
+      second: detailSeriesGroup(sampledReadings, "second"),
+      minute: detailSeriesGroup(sampledReadings, "minute"),
+      hour: detailSeriesGroup(sampledReadings, "hour"),
+      day: detailSeriesGroup(sampledReadings, "day")
     }
   };
 }

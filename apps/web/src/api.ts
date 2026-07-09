@@ -1,5 +1,5 @@
 export type Role = "admin" | "operator" | "viewer";
-export type Action = "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_stop";
+export type Action = "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_return" | "auto_stop";
 export type RiskLevel = "low" | "medium" | "high";
 
 export interface User {

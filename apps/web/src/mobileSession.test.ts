@@ -2,8 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildLocalPatrolTask,
+  closedLoopPatrolSteps,
   defaultMobileConnectionMode,
+  firmwarePrecheckSteps,
   mobileSessionAllowsLocalControl,
+  patrolTemplateDurationMs,
+  reconcileLocalPatrolTasks,
+  returnLanePatrolSteps,
+  selectMobilePatrolTemplate,
   selectMobileReadings,
   shouldAutoFallbackGatewayToCarDirect,
   shouldPollLocalTelemetry
@@ -68,13 +74,32 @@ test("builds a real local patrol task record for gateway and car direct mode", (
   });
 
   assert.equal(next[0].status, "running");
-  assert.equal(next[0].name, "基站预检线路");
+  assert.equal(next[0].name, "基站闭合环线巡检");
   assert.equal(next[0].started_at, "2026-07-08T12:00:00.000Z");
-  assert.match(next[0].steps_json, /right/);
+  assert.match(next[0].steps_json, /closed-loop|left|forward/);
   assert.equal(next[1].id, "task-old");
 });
 
-test("local patrol display route matches the firmware precheck route", () => {
+test("local patrol tasks complete after the selected route duration", () => {
+  const [task] = buildLocalPatrolTask({
+    currentTasks: [],
+    deviceId: "ws63-car-001",
+    baseStationId: "sle-base-001",
+    mode: "gateway",
+    templateId: "return-lane",
+    now: "2026-07-08T12:00:00.000Z"
+  });
+  const durationMs = patrolTemplateDurationMs(selectMobilePatrolTemplate("return-lane"));
+
+  const stillRunning = reconcileLocalPatrolTasks([task], Date.parse(task.created_at) + durationMs);
+  assert.equal(stillRunning[0].status, "running");
+
+  const completed = reconcileLocalPatrolTasks([task], Date.parse(task.created_at) + durationMs + 700);
+  assert.equal(completed[0].status, "completed");
+  assert.equal(completed[0].finished_at, "2026-07-08T12:00:08.040Z");
+});
+
+test("local patrol display route uses a closed-loop inspection route", () => {
   const [task] = buildLocalPatrolTask({
     currentTasks: [],
     deviceId: "ws63-car-001",
@@ -83,12 +108,34 @@ test("local patrol display route matches the firmware precheck route", () => {
     now: "2026-07-08T12:00:00.000Z"
   });
 
-  assert.deepEqual(JSON.parse(task.steps_json), [
+  const expectedClosedLoopRoute = [
     { action: "forward", speed: 45, durationMs: 2000 },
     { action: "left", speed: 35, durationMs: 600 },
     { action: "forward", speed: 45, durationMs: 2000 },
-    { action: "right", speed: 35, durationMs: 600 },
+    { action: "left", speed: 35, durationMs: 600 },
     { action: "forward", speed: 45, durationMs: 2000 },
+    { action: "left", speed: 35, durationMs: 600 },
+    { action: "forward", speed: 45, durationMs: 2000 },
+    { action: "left", speed: 35, durationMs: 600 },
+    { action: "stop", speed: 0, durationMs: 500 }
+  ];
+
+  assert.deepEqual(JSON.parse(task.steps_json), expectedClosedLoopRoute);
+  assert.deepEqual(firmwarePrecheckSteps, expectedClosedLoopRoute);
+  assert.deepEqual(closedLoopPatrolSteps, expectedClosedLoopRoute);
+});
+
+test("mobile patrol templates provide two distinct effective routes", () => {
+  assert.equal(selectMobilePatrolTemplate("closed-loop").name, "闭合环线巡检");
+  assert.equal(selectMobilePatrolTemplate("return-lane").name, "折返通道巡检");
+  assert.notDeepEqual(closedLoopPatrolSteps, returnLanePatrolSteps);
+  assert.deepEqual(returnLanePatrolSteps, [
+    { action: "forward", speed: 42, durationMs: 2200 },
+    { action: "stop", speed: 0, durationMs: 500 },
+    { action: "right", speed: 32, durationMs: 520 },
+    { action: "forward", speed: 38, durationMs: 1600 },
+    { action: "left", speed: 32, durationMs: 520 },
+    { action: "backward", speed: 35, durationMs: 2200 },
     { action: "stop", speed: 0, durationMs: 500 }
   ]);
 });

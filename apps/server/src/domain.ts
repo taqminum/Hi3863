@@ -7,7 +7,7 @@ export type Permission =
   | "audit:read"
   | "user:manage";
 
-export type ControlAction = "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_stop";
+export type ControlAction = "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_return" | "auto_stop";
 
 export interface ControlInput {
   action: ControlAction;
@@ -114,7 +114,7 @@ export function clamp(value: number, min: number, max: number): number {
 }
 
 function currentCarPayload(cmd: Exclude<ControlAction, "drive">, speed = 0, durationMs = 0): string {
-  if (cmd === "auto_start" || cmd === "auto_stop") return JSON.stringify({ cmd });
+  if (cmd === "auto_start" || cmd === "auto_return" || cmd === "auto_stop") return JSON.stringify({ cmd });
   if (cmd === "stop") return JSON.stringify({ cmd: "stop", speed: 0, duration_ms: 0 });
   return JSON.stringify({
     cmd,
@@ -147,7 +147,7 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 export function validateControlInput(input: ControlInput): CommandValidationResult {
-  if (!["forward", "backward", "left", "right", "stop", "drive", "auto_start", "auto_stop"].includes(input.action)) {
+  if (!["forward", "backward", "left", "right", "stop", "drive", "auto_start", "auto_return", "auto_stop"].includes(input.action)) {
     return { ok: false, field: "action", message: "action must be a supported WS63E control action" };
   }
   if (input.action === "drive") {
@@ -162,7 +162,7 @@ export function validateControlInput(input: ControlInput): CommandValidationResu
     }
     return { ok: true };
   }
-  if (input.action === "auto_start" || input.action === "auto_stop") {
+  if (input.action === "auto_start" || input.action === "auto_return" || input.action === "auto_stop") {
     return { ok: true };
   }
   if (!isFiniteNumber(input.speed) || input.speed < 0 || input.speed > 100) {
@@ -222,7 +222,7 @@ export function parsePatrolSteps(value: unknown): PatrolStep[] {
   return value
     .filter((step): step is Record<string, unknown> => typeof step === "object" && step !== null)
     .map((step) => {
-      const action = ["forward", "backward", "left", "right", "stop"].includes(String(step.action))
+      const action = ["forward", "backward", "left", "right", "stop", "auto_start", "auto_return", "auto_stop"].includes(String(step.action))
         ? step.action as PatrolStep["action"]
         : "forward";
       return {

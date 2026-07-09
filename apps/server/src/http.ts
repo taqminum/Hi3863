@@ -364,7 +364,7 @@ const routes: Handler = async (request, response, url, user) => {
     const body = await readJson<{
       deviceId?: string;
       baseStationId?: string;
-      action?: "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_stop";
+      action?: "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_return" | "auto_stop";
       speed?: number;
       left?: number;
       right?: number;

@@ -17,8 +17,8 @@ import {
   wheelOutputToLegacyCommand
 } from "./carProtocol.ts";
 
-test("uses BearPi gateway LAN as the default local car API", () => {
-  assert.equal(CAR_LOCAL_BASE_URL, "http://192.168.6.1:8080");
+test("uses WS63E SoftAP as the default local car API", () => {
+  assert.equal(CAR_LOCAL_BASE_URL, "http://192.168.5.1:8080");
 });
 
 test("uses BearPi UDP gateway as the default local transport", () => {

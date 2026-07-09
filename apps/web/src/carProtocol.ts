@@ -1,4 +1,4 @@
-export type CarCommand = "forward" | "backward" | "left" | "right" | "stop" | "auto_start" | "auto_stop";
+export type CarCommand = "forward" | "backward" | "left" | "right" | "stop" | "auto_start" | "auto_return" | "auto_stop";
 export type MotionName = "stop" | "forward" | "backward" | "left" | "right" | "unknown";
 
 export interface JoystickVector {
@@ -59,7 +59,7 @@ export interface LocalTelemetrySample {
   recordedAt: string;
 }
 
-export const CAR_LOCAL_BASE_URL = "http://192.168.6.1:8080";
+export const CAR_LOCAL_BASE_URL = "http://192.168.5.1:8080";
 export const CAR_LOCAL_UDP_HOST = "255.255.255.255";
 export const CAR_LOCAL_UDP_PORT = 8888;
 export const CAR_LOCAL_UDP_CONTROL_SPEED = 35;
@@ -119,7 +119,7 @@ export function commandSpeedFromJoystick(vector: JoystickVector, maxPercent = JO
 }
 
 export function buildCompatControlPayload(command: CarCommand, speed: number, durationMs: number): CompatControlPayload {
-  if (command === "auto_start" || command === "auto_stop") return { cmd: command };
+  if (command === "auto_start" || command === "auto_return" || command === "auto_stop") return { cmd: command };
   if (command === "stop") return { cmd: "stop", speed: 0, duration_ms: 0 };
   const normalizedSpeed = Math.round(clamp(speed, MIN_EFFECTIVE_PERCENT, 100));
   return {
@@ -174,7 +174,7 @@ export function buildUdpGatewayControlMessage(payload: CompatControlPayload | Dr
   }
 
   const command = buildUdpGatewayCommand(payload);
-  if (command === "auto_start" || command === "auto_stop") {
+  if (command === "auto_start" || command === "auto_return" || command === "auto_stop") {
     return JSON.stringify({ cmd: command });
   }
   if (command === "stop") {

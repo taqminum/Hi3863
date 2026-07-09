@@ -488,13 +488,13 @@
               </div>
               <div class="form-group">
                 <label class="form-label">任务名称</label>
-                <input type="text" class="form-control" value="预检线路">
+                <input type="text" class="form-control" value="闭合环线巡检">
               </div>
               <div class="form-group">
                 <label class="form-label">预设路线模板</label>
-                <select class="form-control">
-                  <option>固件预检线路</option>
-                  <option>云端巡检任务</option>
+                <select id="ws63-patrol-template" class="form-control">
+                  <option value="closed-loop">闭合环线巡检</option>
+                  <option value="return-lane">折返通道巡检</option>
                 </select>
               </div>
               <button class="btn-primary"><i data-lucide="send" width="16" height="16"></i> 一键下发任务</button>
@@ -518,7 +518,7 @@
                   <div class="tl-marker"></div>
                   <div class="tl-content">
                     <div class="tl-title">等待创建巡检任务</div>
-                    <div class="tl-meta"><span>等待手机端同步任务</span></div>
+                    <div class="tl-meta"><span>可选择闭合环线或折返通道</span></div>
                   </div>
                 </div>
                 <div class="tl-item">
@@ -532,7 +532,7 @@
                   <div class="tl-marker"></div>
                   <div class="tl-content">
                     <div class="tl-title">等待线路执行</div>
-                    <div class="tl-meta"><span>执行进度由任务回执更新</span></div>
+                    <div class="tl-meta"><span>向固件下发所选路线命令</span></div>
                   </div>
                 </div>
                 <div class="tl-item">

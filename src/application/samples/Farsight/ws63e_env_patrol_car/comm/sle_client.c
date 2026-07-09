@@ -238,6 +238,10 @@ static void car_sle_apply_rx_text(const uint8_t *data, uint16_t len)
     text[copy_len] = '\0';
 
     printf("[car][sle] rx %s\r\n", text);
+    if (strstr(text, "auto_return") != NULL) {
+        patrol_route_start_return_lane();
+        return;
+    }
     if (strstr(text, "auto_start") != NULL) {
         patrol_route_start();
         return;
