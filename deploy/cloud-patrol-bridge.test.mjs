@@ -155,6 +155,50 @@ test("bridgePatrolOnce sends each patrol step and completes the task", async () 
   }
 });
 
+test("bridgePatrolOnce sends firmware route command as one packet", async () => {
+  const app = await createTestApp();
+  const server = dgram.createSocket("udp4");
+  await new Promise((resolve) => server.bind(0, "127.0.0.1", resolve));
+
+  const messages = [];
+  server.on("message", (message) => {
+    messages.push(message.toString("utf8"));
+  });
+
+  try {
+    const token = await app.login("operator", "operator123");
+    const created = await fetch(`${app.baseUrl}/api/patrol-tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        name: "Return lane firmware patrol",
+        steps: [{ action: "auto_return", speed: 0, durationMs: 8040 }]
+      })
+    });
+    assert.equal(created.status, 201);
+
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("missing udp address");
+
+    const result = await bridgePatrolOnce({
+      cloudBaseUrl: app.baseUrl,
+      baseStationId: "sle-base-001",
+      deviceKey: app.deviceKey,
+      gatewayHost: "127.0.0.1",
+      gatewayPort: address.port,
+      timeoutMs: 1000,
+      stepDelayMs: 1
+    });
+
+    assert.deepEqual(messages, ["{\"cmd\":\"auto_return\"}"]);
+    assert.equal(result.processed.length, 1);
+    assert.equal(result.processed[0].completed.task.status, "completed");
+  } finally {
+    server.close();
+    await app.close();
+  }
+});
+
 test("bridgePatrolOnce marks task failed when a step cannot be sent", async () => {
   const app = await createTestApp();
   try {

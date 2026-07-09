@@ -23,6 +23,7 @@ One-shot precheck route uses the same endpoint with:
 
 ```json
 {"cmd":"auto_start"}
+{"cmd":"auto_return"}
 ```
 
 or
@@ -31,14 +32,20 @@ or
 {"cmd":"auto_stop"}
 ```
 
-`auto_start` runs this open-loop sequence once, then stops and clears the
-patrol flag:
+`auto_start` runs the closed-loop route once, then stops and clears the patrol
+flag:
 
 ```text
-forward 2000 ms -> left 600 ms -> forward 2000 ms -> right 600 ms -> forward 2000 ms -> stop
+forward 2000 ms -> left 600 ms -> forward 2000 ms -> left 600 ms -> forward 2000 ms -> left 600 ms -> forward 2000 ms -> left 600 ms -> stop
 ```
 
-`auto_stop` interrupts the precheck route and stops the car. Manual commands
+`auto_return` runs the return-lane route once:
+
+```text
+forward 2200 ms -> stop 500 ms -> right 520 ms -> forward 1600 ms -> left 520 ms -> backward 2200 ms -> stop
+```
+
+`auto_stop` interrupts the active patrol route and stops the car. Manual commands
 also stop the precheck route first, then apply the requested motion.
 
 Current firmware exposes `control_command_parse` and `control_command_apply`.
@@ -73,7 +80,7 @@ Recommended app behavior:
   and `duration_ms`.
 - While a direction button is held, repeat the same command every 300 to 500 ms.
 - On button release, immediately send `{"cmd":"stop"}`.
-- Use `auto_start` and `auto_stop` only for the one-shot open-loop precheck route.
+- Use `auto_start`, `auto_return`, and `auto_stop` only for firmware-managed one-shot patrol routes.
 - Any manual command stops the precheck route before applying the manual motion.
 
 Safety note:

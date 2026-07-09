@@ -5,6 +5,7 @@ import {
   buildTimeSeries,
   detectMissingIntervals,
   mergeCachedReadings,
+  sampleReadingsByInterval,
   summarizeReadingsForAgent,
   type CachedReading
 } from "./historySeries.ts";
@@ -67,6 +68,16 @@ test("mergeCachedReadings deduplicates by reading id and prefers newer cache sou
   assert.equal(merged.length, 1);
   assert.equal(merged[0].temperature, 26);
   assert.equal(merged[0].source, "gateway");
+});
+
+test("sampleReadingsByInterval keeps one reading per device every second", () => {
+  const sampled = sampleReadingsByInterval([
+    reading("r1", "2026-07-08T10:00:05.100Z", 25),
+    reading("r2", "2026-07-08T10:00:05.900Z", 26),
+    reading("r3", "2026-07-08T10:00:06.000Z", 27)
+  ], 1000);
+
+  assert.deepEqual(sampled.map((item) => item.id), ["r2", "r3"]);
 });
 
 test("detectMissingIntervals reports gaps between actual received readings", () => {

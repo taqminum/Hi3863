@@ -36,7 +36,7 @@ export function initDb(): void {
       status TEXT NOT NULL,
       network_status TEXT NOT NULL,
       last_heartbeat TEXT NOT NULL,
-      last_rssi INTEGER NOT NULL DEFAULT -45,
+      last_rssi INTEGER,
       cached_count INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS devices (
@@ -60,7 +60,7 @@ export function initDb(): void {
       direction TEXT NOT NULL,
       status TEXT NOT NULL,
       link_mode TEXT NOT NULL,
-      rssi INTEGER NOT NULL,
+      rssi INTEGER,
       cached_count INTEGER NOT NULL,
       recorded_at TEXT NOT NULL
     );
@@ -257,6 +257,7 @@ export function readingsByTimeRange(input: {
 }
 
 function rowToReading(row: Record<string, unknown>): SensorReading {
+  const rssi = row.rssi === null || row.rssi === undefined ? undefined : Number(row.rssi);
   return {
     id: String(row.id),
     deviceId: String(row.device_id),
@@ -268,7 +269,7 @@ function rowToReading(row: Record<string, unknown>): SensorReading {
     direction: String(row.direction),
     status: String(row.status),
     linkMode: String(row.link_mode),
-    rssi: Number(row.rssi),
+    ...(Number.isFinite(rssi) ? { rssi } : {}),
     cachedCount: Number(row.cached_count),
     recordedAt: String(row.recorded_at)
   };
@@ -293,7 +294,7 @@ export function ingestTelemetry(payload: BaseStationTelemetry): SensorReading[] 
       reading.direction,
       reading.status,
       reading.linkMode,
-      reading.rssi,
+      reading.rssi ?? null,
       reading.cachedCount,
       reading.recordedAt
     );
@@ -305,7 +306,7 @@ export function ingestTelemetry(payload: BaseStationTelemetry): SensorReading[] 
       "online",
       "cloud-online",
       reading.recordedAt,
-      reading.rssi,
+      reading.rssi ?? null,
       reading.cachedCount,
       reading.baseStationId
     );
@@ -333,7 +334,7 @@ export function ingestTelemetryBatch(payload: BaseStationTelemetry): { readings:
 
 export function createCommand(input: ControlInput & { deviceId: string; baseStationId: string; userId: string }): unknown {
   const id = `cmd-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const speed = input.action === "stop" || input.action === "drive" || input.action === "auto_start" || input.action === "auto_stop"
+  const speed = input.action === "stop" || input.action === "drive" || input.action === "auto_start" || input.action === "auto_return" || input.action === "auto_stop"
     ? 0
     : Math.max(0, Math.min(100, Math.round(input.speed)));
   const payload = toCarControlPayload({

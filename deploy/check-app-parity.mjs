@@ -66,41 +66,6 @@ check("APK has mobile Open Design route", () => {
   assertContains("mobile Open Design route", content, "side-nav");
 });
 
-check("APK patrol tab uses Open Design while React page is retained", () => {
-  const mobileConsole = read("apps/web/src/mobile/MobileConsoleApp.tsx");
-  const mobileOpenDesign = read("apps/web/src/mobile/mobileOpenDesign.ts");
-  assertContains(
-    "mobile patrol feature flag",
-    mobileConsole,
-    "const ENABLE_REACT_PATROL_PAGE = false"
-  );
-  assertContains(
-    "mobile patrol React page",
-    mobileConsole,
-    "MobilePatrolPage"
-  );
-  assertContains(
-    "Open Design patrol queue",
-    mobileOpenDesign,
-    "updateTaskQueue(snapshot)"
-  );
-  assertContains(
-    "Open Design patrol creation",
-    mobileOpenDesign,
-    'send("create-patrol", { template: "standard" })'
-  );
-  assertContains(
-    "mobile patrol model",
-    read("apps/web/src/mobile/patrol/mobilePatrolModel.ts"),
-    "buildMobilePatrolModel"
-  );
-  assertContains(
-    "mobile patrol styles",
-    read("apps/web/src/mobile/patrol/mobilePatrol.css"),
-    "mobile-patrol-layout"
-  );
-});
-
 check("APK web assets use cloud API", () => {
   const assetsDir = path.join(repo, "apps/web/android/app/src/main/assets/public/assets");
   const jsFiles = fs.readdirSync(assetsDir).filter((name) => name.endsWith(".js"));

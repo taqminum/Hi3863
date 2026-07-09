@@ -21,6 +21,21 @@ test("parseGatewayTelemetryResponse accepts raw car telemetry JSON from BearPi U
   assert.equal(sample.cachedCount, 3);
 });
 
+test("parseGatewayTelemetryResponse leaves RSSI unknown when gateway does not report it", () => {
+  const sample = parseGatewayTelemetryResponse(JSON.stringify({
+    seq: 8,
+    temp_x10: 281,
+    humi_x10: 610,
+    light_x10: 1200,
+    motion: 1,
+    patrol: 0,
+    err: 0
+  }), "2026-07-08T10:00:01.000Z");
+
+  assert.equal(sample.rssi, undefined);
+  assert.equal(sample.cachedCount, 0);
+});
+
 test("gatewayTelemetryToReading marks source as sle gateway udp", () => {
   const reading = gatewayTelemetryToReading({
     seq: 7,
@@ -40,6 +55,23 @@ test("gatewayTelemetryToReading marks source as sle gateway udp", () => {
   assert.equal(reading.linkMode, "gateway-udp");
   assert.equal(reading.rssi, -62);
   assert.equal(reading.cachedCount, 3);
+});
+
+test("gatewayTelemetryToReading keeps RSSI unknown instead of inventing a value", () => {
+  const reading = gatewayTelemetryToReading({
+    seq: 8,
+    temperature: 28.1,
+    humidity: 61,
+    lightness: 120,
+    alerts: [],
+    motion: "forward",
+    patrol: false,
+    err: 0,
+    recordedAt: "2026-07-08T10:00:01.000Z",
+    cachedCount: 0
+  });
+
+  assert.equal(reading.rssi, undefined);
 });
 
 test("buildGatewayControlRequest sends controls without waiting for telemetry", () => {

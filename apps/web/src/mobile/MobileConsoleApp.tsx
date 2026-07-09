@@ -33,19 +33,13 @@ import {
   buildLocalPatrolTask,
   defaultMobileConnectionMode,
   mobileSessionAllowsLocalControl,
+  patrolTemplateDurationMs,
+  reconcileLocalPatrolTasks,
+  selectMobilePatrolTemplate,
   selectMobileReadings,
   shouldAutoFallbackGatewayToCarDirect,
   shouldPollLocalTelemetry
 } from "./mobileSession";
-import { MobilePatrolPage } from "./patrol/MobilePatrolPage";
-import {
-  buildMobilePatrolModel,
-  MOBILE_PATROL_ROUTE_TEMPLATES,
-  type MobilePatrolRouteTemplate
-} from "./patrol/mobilePatrolModel";
-import "./patrol/mobilePatrol.css";
-
-const ENABLE_REACT_PATROL_PAGE = false;
 
 const mobileFallbackDevice: DeviceRecord = {
   id: "ws63-car-001",
@@ -107,6 +101,14 @@ function mergeReadingsById(...groups: Reading[][]): Reading[] {
   return [...byId.values()].sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
 }
 
+function failLocalPatrolTask(tasks: PatrolTask[], taskId: string): PatrolTask[] {
+  return tasks.map((task) => task.id === taskId ? {
+    ...task,
+    status: "failed",
+    finished_at: new Date().toISOString()
+  } : task);
+}
+
 function readStoredUser(): User | null {
   const raw = localStorage.getItem("ws63-user");
   if (!raw) return null;
@@ -134,15 +136,11 @@ export function MobileConsoleApp() {
   const [audits, setAudits] = useState<AuditLog[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("ws63-car-001");
   const [notice, setNotice] = useState("");
-  const [simulatorData, setSimulatorData] = useState(false);
   const [cloudApiOnline, setCloudApiOnline] = useState(false);
   const [historyRange, setHistoryRange] = useState<MobileHistoryRange>("1H");
   const [localSamples, setLocalSamples] = useState<LocalTelemetrySample[]>([]);
   const [gatewaySamples, setGatewaySamples] = useState<GatewayTelemetrySample[]>([]);
   const [cachedReadings, setCachedReadings] = useState<CachedReading[]>([]);
-  const [activeTab, setActiveTab] = useState<"overview" | "control" | "tasks" | "data" | "manage">("overview");
-  const [patrolTaskName, setPatrolTaskName] = useState("预检线路");
-  const [patrolTemplateId, setPatrolTemplateId] = useState<MobilePatrolRouteTemplate["id"]>("firmware-precheck");
 
   const fallbackDevice = connectionMode === "gateway" ? gatewayFallbackDevice : connectionMode === "car-direct" ? carDirectFallbackDevice : mobileFallbackDevice;
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0] ?? fallbackDevice;
@@ -228,9 +226,7 @@ export function MobileConsoleApp() {
     if (!nextToken || connectionMode !== "cloud" || nextToken.startsWith("local-demo:")) return;
     const health = await api.health();
     setCloudApiOnline(Boolean(health.ok));
-    setSimulatorData(Boolean(health.simulator));
     const dashboard = await api.dashboard(nextToken, nextDeviceId);
-    setSimulatorData(Boolean(health.simulator || dashboard.simulator));
     const range = rangeForCache();
     const history = await api.readings(nextToken, nextDeviceId, {
       ...range,
@@ -261,6 +257,13 @@ export function MobileConsoleApp() {
     const timer = window.setInterval(() => void guarded(() => refresh()), 3000);
     return () => window.clearInterval(timer);
   }, [connectionMode, guarded, refresh, token]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setTasks((current) => reconcileLocalPatrolTasks(current));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (connectionMode === "cloud") return;
@@ -341,9 +344,9 @@ export function MobileConsoleApp() {
       reports,
       audits,
       cloudApiOnline,
-      notice: notice || (simulatorData ? "当前云服务器启用了模拟器数据" : "")
+      notice
     });
-  }, [activeReadings, audits, baseStations, cloudApiOnline, commands, connectionMode, devices, historyRange, liveReadings, notice, reports, selectedDevice, simulatorData, tasks, user]);
+  }, [activeReadings, audits, baseStations, cloudApiOnline, commands, connectionMode, devices, historyRange, liveReadings, notice, reports, selectedDevice, tasks, user]);
 
   const postSnapshot = useCallback(() => {
     if (!snapshot) return;
@@ -359,88 +362,9 @@ export function MobileConsoleApp() {
     postSnapshot();
   }, [postSnapshot]);
 
-  const selectedPatrolTemplate = useMemo(
-    () => MOBILE_PATROL_ROUTE_TEMPLATES.find((template) => template.id === patrolTemplateId) ?? MOBILE_PATROL_ROUTE_TEMPLATES[0],
-    [patrolTemplateId]
-  );
-
-  const createMobilePatrol = useCallback(async () => {
-    await guarded(async () => {
-      if (connectionMode === "gateway") {
-        lastLocalControlAtRef.current = Date.now();
-        await gatewayApi.sendControl({ cmd: "auto_start" });
-        setTasks((current) => buildLocalPatrolTask({
-          currentTasks: current,
-          deviceId: selectedDevice.id,
-          baseStationId: selectedDevice.base_station_id,
-          mode: "gateway"
-        }));
-        setNotice("已向星闪基站发送自动巡检启动指令");
-        return;
-      }
-      if (connectionMode === "car-direct") {
-        lastLocalControlAtRef.current = Date.now();
-        await localCarApi.send({ cmd: "auto_start" });
-        setTasks((current) => buildLocalPatrolTask({
-          currentTasks: current,
-          deviceId: selectedDevice.id,
-          baseStationId: selectedDevice.base_station_id,
-          mode: "car-direct"
-        }));
-        setNotice("已向小车直连发送自动巡检启动指令");
-        return;
-      }
-      if (!token || token.startsWith("local-demo:")) {
-        setNotice("请先登录云端账号后再创建巡检任务。");
-        return;
-      }
-      await api.createPatrol(token, {
-        deviceId: selectedDevice.id,
-        baseStationId: selectedDevice.base_station_id,
-        name: patrolTaskName.trim() || selectedPatrolTemplate.name,
-        steps: [...selectedPatrolTemplate.steps]
-      });
-      setNotice("巡检任务已推送到云端任务队列，等待基站拉取");
-      await refresh();
-    });
-  }, [connectionMode, guarded, patrolTaskName, refresh, selectedDevice.base_station_id, selectedDevice.id, selectedPatrolTemplate, token]);
-
-  const stopMobilePatrol = useCallback(async () => {
-    await guarded(async () => {
-      if (connectionMode === "gateway") {
-        lastLocalControlAtRef.current = Date.now();
-        await gatewayApi.sendControl({ cmd: "auto_stop" });
-        setNotice("已向星闪基站发送停止预检指令");
-        return;
-      }
-      if (connectionMode === "car-direct") {
-        lastLocalControlAtRef.current = Date.now();
-        await localCarApi.send({ cmd: "auto_stop" });
-        setNotice("已向小车直连发送停止预检指令");
-        return;
-      }
-      setNotice("云端巡检停止需要任务取消接口；当前请等待补齐回执或检查基站链路。");
-    });
-  }, [connectionMode, guarded]);
-
-  const patrolModel = useMemo(() => buildMobilePatrolModel({
-    user,
-    token,
-    connectionMode,
-    selectedDevice,
-    baseStations,
-    tasks,
-    cloudApiOnline,
-    notice
-  }), [baseStations, cloudApiOnline, connectionMode, notice, selectedDevice, tasks, token, user]);
-
   const handleBridgeMessage = useCallback(async (message: MobileOpenDesignToHostMessage) => {
     if (message.type === "ready") {
       postSnapshot();
-      return;
-    }
-    if (message.type === "active-tab") {
-      setActiveTab(message.tab);
       return;
     }
     if (message.type === "logout") {
@@ -514,7 +438,58 @@ export function MobileConsoleApp() {
         return;
       }
       if (message.type === "create-patrol") {
-        await createMobilePatrol();
+        const template = selectMobilePatrolTemplate(message.template);
+        if (connectionMode === "gateway") {
+          const startedAt = new Date().toISOString();
+          const taskId = `local-task-${Date.parse(startedAt) || Date.now()}`;
+          lastLocalControlAtRef.current = Date.now();
+          setTasks((current) => buildLocalPatrolTask({
+            currentTasks: current,
+            deviceId: selectedDevice.id,
+            baseStationId: selectedDevice.base_station_id,
+            mode: "gateway",
+            templateId: template.id,
+            now: startedAt
+          }));
+          setNotice(`已向星闪基站下发${template.name}`);
+          try {
+            lastLocalControlAtRef.current = Date.now();
+            await gatewayApi.sendControl({ cmd: template.firmwareCommand });
+          } catch (error) {
+            setTasks((current) => failLocalPatrolTask(current, taskId));
+            throw error;
+          }
+          return;
+        }
+        if (connectionMode === "car-direct") {
+          const startedAt = new Date().toISOString();
+          const taskId = `local-task-${Date.parse(startedAt) || Date.now()}`;
+          setTasks((current) => buildLocalPatrolTask({
+            currentTasks: current,
+            deviceId: selectedDevice.id,
+            baseStationId: selectedDevice.base_station_id,
+            mode: "car-direct",
+            templateId: template.id,
+            now: startedAt
+          }));
+          setNotice(`已向小车直连下发${template.name}`);
+          try {
+            lastLocalControlAtRef.current = Date.now();
+            await localCarApi.send({ cmd: template.firmwareCommand });
+          } catch (error) {
+            setTasks((current) => failLocalPatrolTask(current, taskId));
+            throw error;
+          }
+          return;
+        }
+        if (!token || token.startsWith("local-demo:")) return;
+        await api.createPatrol(token, {
+          deviceId: selectedDevice.id,
+          baseStationId: selectedDevice.base_station_id,
+          name: `APK ${template.name}`,
+          steps: [{ action: template.firmwareCommand, speed: 0, durationMs: patrolTemplateDurationMs(template) }]
+        });
+        await refresh();
         return;
       }
       if (message.type === "refresh-agent") {
@@ -538,7 +513,7 @@ export function MobileConsoleApp() {
         }
       }
     });
-  }, [activeReadings, changeConnectionMode, connectionMode, createMobilePatrol, guarded, logout, postSnapshot, rangeForCache, refresh, selectedDevice.base_station_id, selectedDevice.id, token]);
+  }, [activeReadings, changeConnectionMode, connectionMode, guarded, logout, postSnapshot, rangeForCache, refresh, selectedDevice.base_station_id, selectedDevice.id, token]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent<MobileOpenDesignToHostMessage>) {
@@ -560,26 +535,12 @@ export function MobileConsoleApp() {
   }
 
   return (
-    <div className="mobile-console-host">
-      <iframe
-        ref={frameRef}
-        title="WS63E mobile console"
-        className="mobile-open-design-frame"
-        srcDoc={srcDoc}
-        onLoad={postSnapshot}
-      />
-      {ENABLE_REACT_PATROL_PAGE && activeTab === "tasks" ? (
-        <MobilePatrolPage
-          model={patrolModel}
-          taskName={patrolTaskName}
-          templateId={patrolTemplateId}
-          onTaskNameChange={setPatrolTaskName}
-          onTemplateChange={setPatrolTemplateId}
-          onCreate={() => void createMobilePatrol()}
-          onRefresh={() => void guarded(() => refresh())}
-          onStop={() => void stopMobilePatrol()}
-        />
-      ) : null}
-    </div>
+    <iframe
+      ref={frameRef}
+      title="WS63E mobile console"
+      className="mobile-open-design-frame"
+      srcDoc={srcDoc}
+      onLoad={postSnapshot}
+    />
   );
 }

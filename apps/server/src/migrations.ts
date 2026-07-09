@@ -16,6 +16,66 @@ function ensureColumn(db: DatabaseSync, table: string, column: string, definitio
   db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
+function rebuildNullableRssiTables(db: DatabaseSync): void {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+
+    ALTER TABLE base_stations RENAME TO base_stations_old;
+    CREATE TABLE base_stations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      network_status TEXT NOT NULL,
+      last_heartbeat TEXT NOT NULL,
+      last_rssi INTEGER,
+      cached_count INTEGER NOT NULL DEFAULT 0,
+      firmware_version TEXT,
+      ip_address TEXT,
+      updated_at TEXT
+    );
+    INSERT INTO base_stations (
+      id, name, status, network_status, last_heartbeat, last_rssi, cached_count,
+      firmware_version, ip_address, updated_at
+    )
+    SELECT
+      id, name, status, network_status, last_heartbeat,
+      CASE WHEN last_rssi = -45 THEN NULL ELSE last_rssi END,
+      cached_count, firmware_version, ip_address, updated_at
+    FROM base_stations_old;
+    DROP TABLE base_stations_old;
+
+    ALTER TABLE sensor_readings RENAME TO sensor_readings_old;
+    CREATE TABLE sensor_readings (
+      id TEXT PRIMARY KEY,
+      device_id TEXT NOT NULL,
+      base_station_id TEXT NOT NULL,
+      temperature REAL NOT NULL,
+      humidity REAL NOT NULL,
+      lightness INTEGER NOT NULL,
+      gear TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      status TEXT NOT NULL,
+      link_mode TEXT NOT NULL,
+      rssi INTEGER,
+      cached_count INTEGER NOT NULL,
+      recorded_at TEXT NOT NULL
+    );
+    INSERT INTO sensor_readings (
+      id, device_id, base_station_id, temperature, humidity, lightness, gear,
+      direction, status, link_mode, rssi, cached_count, recorded_at
+    )
+    SELECT
+      id, device_id, base_station_id, temperature, humidity, lightness, gear,
+      direction, status, link_mode,
+      CASE WHEN rssi = -45 THEN NULL ELSE rssi END,
+      cached_count, recorded_at
+    FROM sensor_readings_old;
+    DROP TABLE sensor_readings_old;
+
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
 export function runMigrations(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -94,6 +154,13 @@ export function runMigrations(db: DatabaseSync): void {
       name: "agent_evidence",
       up(database) {
         ensureColumn(database, "agent_reports", "evidence_json", "TEXT NOT NULL DEFAULT '[]'");
+      }
+    },
+    {
+      version: 8,
+      name: "nullable_measured_rssi",
+      up(database) {
+        rebuildNullableRssiTables(database);
       }
     }
   ];

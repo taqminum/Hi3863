@@ -33,7 +33,7 @@ export interface AgentHistorySummary {
     temperature: number;
     humidity: number;
     lightness: number;
-    rssi: number;
+    rssi?: number;
     source?: ReadingSource;
   }>;
   stats: Record<NumericReadingField, {
@@ -89,6 +89,17 @@ export function mergeCachedReadings(...groups: CachedReading[][]): CachedReading
     }
   }
   return [...byId.values()].sort((a, b) => timeValue(a.recordedAt) - timeValue(b.recordedAt));
+}
+
+export function sampleReadingsByInterval<T extends Reading>(readings: T[], intervalMs: number): T[] {
+  const interval = Math.max(1, Math.round(intervalMs));
+  const byBucket = new Map<string, T>();
+  for (const reading of readings) {
+    const recordedAt = timeValue(reading.recordedAt);
+    const bucket = Math.floor(recordedAt / interval);
+    byBucket.set(`${reading.deviceId}:${bucket}`, reading);
+  }
+  return [...byBucket.values()].sort((a, b) => timeValue(a.recordedAt) - timeValue(b.recordedAt));
 }
 
 export function filterReadingsByRange<T extends Reading>(readings: T[], from: string, to: string): T[] {
@@ -196,7 +207,7 @@ export function summarizeReadingsForAgent(readings: Reading[], input: {
     temperature: reading.temperature,
     humidity: reading.humidity,
     lightness: reading.lightness,
-    rssi: reading.rssi,
+    ...(reading.rssi === undefined ? {} : { rssi: reading.rssi }),
     source: (reading as Partial<CachedReading>).source
   }));
   const sources = Array.from(new Set(

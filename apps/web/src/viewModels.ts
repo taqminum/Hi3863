@@ -63,7 +63,7 @@ export function buildDashboardViewModel(input: {
   const report = normalizeReport(input.reports[0]);
   const latestCommand = input.commands[0];
   const latestTask = input.tasks[0];
-  const rssi = latest?.rssi ?? base?.last_rssi;
+  const rssi = latest?.rssi ?? base?.last_rssi ?? undefined;
   const cachedCount = latest?.cachedCount ?? base?.cached_count ?? 0;
 
   return {
@@ -89,7 +89,7 @@ export function buildDashboardViewModel(input: {
 }
 
 export function numericSeries(readings: Reading[], field: "temperature" | "humidity" | "lightness" | "rssi", limit = 24): number[] {
-  return readings.slice(-limit).map((reading) => Number(reading[field] ?? 0));
+  return readings.slice(-limit).map((reading) => Number(reading[field])).filter(Number.isFinite);
 }
 
 export function compactTime(value?: string | null): string {

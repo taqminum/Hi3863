@@ -14,9 +14,12 @@ function normalizePatrolSteps(task) {
 }
 
 export function patrolStepToPayload(step) {
-  const action = ["forward", "backward", "left", "right", "stop"].includes(String(step?.action))
+  const action = ["forward", "backward", "left", "right", "stop", "auto_start", "auto_return", "auto_stop"].includes(String(step?.action))
     ? String(step.action)
     : "forward";
+  if (action === "auto_start" || action === "auto_return" || action === "auto_stop") {
+    return JSON.stringify({ cmd: action });
+  }
   if (action === "stop") {
     return JSON.stringify({ cmd: "stop", speed: 0, duration_ms: 0 });
   }

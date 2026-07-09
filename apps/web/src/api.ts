@@ -1,5 +1,5 @@
 export type Role = "admin" | "operator" | "viewer";
-export type Action = "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_stop";
+export type Action = "forward" | "backward" | "left" | "right" | "stop" | "drive" | "auto_start" | "auto_return" | "auto_stop";
 export type RiskLevel = "low" | "medium" | "high";
 
 export interface User {
@@ -20,7 +20,7 @@ export interface Reading {
   direction: string;
   status: string;
   linkMode: string;
-  rssi: number;
+  rssi?: number;
   cachedCount: number;
   recordedAt: string;
 }
@@ -43,7 +43,7 @@ export interface BaseStationRecord {
   status: string;
   network_status: string;
   last_heartbeat: string;
-  last_rssi?: number;
+  last_rssi?: number | null;
   cached_count?: number;
 }
 

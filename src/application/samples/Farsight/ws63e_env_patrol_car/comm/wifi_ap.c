@@ -49,7 +49,7 @@ static const char g_root_html[] =
     "<button onclick=\"sendCommand('left')\">Left</button><button class=\"secondary\" onclick=\"sendCommand('stop')\">Stop</button><button onclick=\"sendCommand('right')\">Right</button>"
     "<span></span><button onclick=\"sendCommand('backward')\">Backward</button><span></span>"
     "</div><div class=\"controls\" style=\"margin-top:8px;grid-template-columns:repeat(2,136px);\">"
-    "<button onclick=\"sendCommand('auto_start')\">Auto Start</button><button class=\"secondary\" onclick=\"sendCommand('auto_stop')\">Auto Stop</button>"
+    "<button onclick=\"sendCommand('auto_start')\">Closed Loop</button><button onclick=\"sendCommand('auto_return')\">Return Lane</button><button class=\"secondary\" onclick=\"sendCommand('auto_stop')\">Auto Stop</button>"
     "</div><p id=\"status\">Waiting for telemetry...</p><pre id=\"raw\">{}</pre>"
     "<script>"
     "function motionLabel(v){return ['STOP','FORWARD','BACKWARD','LEFT','RIGHT'][v]||'UNKNOWN';}"
@@ -88,7 +88,7 @@ static int car_wifi_http_send(int fd, const char *response)
 static void car_wifi_http_respond_status(int fd, int code, const char *status, const char *body,
     const char *content_type)
 {
-    char response[CAR_WIFI_AP_HTTP_BUF_LEN + 128];
+    char header[320];
     if (body == NULL) {
         body = "";
     }
@@ -96,15 +96,18 @@ static void car_wifi_http_respond_status(int fd, int code, const char *status, c
         content_type = "text/plain";
     }
 
-    int written = snprintf(response, sizeof(response),
+    int written = snprintf(header, sizeof(header),
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+        "Access-Control-Allow-Headers: Content-Type\r\n"
         "Content-Length: %u\r\n"
-        "Connection: close\r\n\r\n"
-        "%s",
-        code, status, content_type, (unsigned int)strlen(body), body);
-    if (written > 0 && (size_t)written < sizeof(response)) {
-        (void)car_wifi_http_send(fd, response);
+        "Connection: close\r\n\r\n",
+        code, status, content_type, (unsigned int)strlen(body));
+    if (written > 0 && (size_t)written < sizeof(header)) {
+        (void)car_wifi_http_send(fd, header);
+        (void)car_wifi_http_send(fd, body);
     }
 }
 
@@ -112,6 +115,11 @@ static void car_wifi_http_handle_request(int fd, const char *request)
 {
     if (request == NULL) {
         car_wifi_http_respond_status(fd, 400, "Bad Request", "bad request\n", "text/plain");
+        return;
+    }
+
+    if (strncmp(request, "OPTIONS ", strlen("OPTIONS ")) == 0) {
+        car_wifi_http_respond_status(fd, 204, "No Content", "", "text/plain");
         return;
     }
 
@@ -139,10 +147,16 @@ static void car_wifi_http_handle_request(int fd, const char *request)
         }
         body += 4;
         printf("[car] wifi control_request %s\r\n", body);
+        if (car_wifi_request_has_token(body, "\"auto_return\"")) {
+            patrol_route_start_return_lane();
+            printf("[car] wifi control_result auto_return\r\n");
+            car_wifi_http_respond_status(fd, 200, "OK", "{\"ok\":true,\"patrol\":1,\"route\":\"return-lane\"}", "application/json");
+            return;
+        }
         if (car_wifi_request_has_token(body, "\"auto_start\"")) {
             patrol_route_start();
             printf("[car] wifi control_result auto_start\r\n");
-            car_wifi_http_respond_status(fd, 200, "OK", "{\"ok\":true,\"patrol\":1}", "application/json");
+            car_wifi_http_respond_status(fd, 200, "OK", "{\"ok\":true,\"patrol\":1,\"route\":\"closed-loop\"}", "application/json");
             return;
         }
         if (car_wifi_request_has_token(body, "\"auto_stop\"")) {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   canPerform,
   createAgentReport,
+  normalizeIncomingTelemetry,
   normalizeTelemetry,
   parsePatrolSteps,
   toCarControlPayload
@@ -64,6 +65,22 @@ test("maps web control commands to car JSON payloads", () => {
   });
 });
 
+test("does not synthesize RSSI when raw telemetry has no measured value", () => {
+  const payload = normalizeIncomingTelemetry({
+    seq: 42,
+    temp_x10: 253,
+    humi_x10: 618,
+    light_x10: 845,
+    motion: 1,
+    patrol: 0,
+    err: 0
+  }, "sle-base-001");
+  const readings = normalizeTelemetry(payload);
+
+  assert.equal(payload.link?.rssi, undefined);
+  assert.equal(readings[0].rssi, undefined);
+});
+
 test("parses patrol steps with bounded speed and duration", () => {
   const steps = parsePatrolSteps([
     { action: "forward", speed: 120, durationMs: 90000 },
@@ -101,4 +118,25 @@ test("agent report flags hot and weak-link conditions", () => {
   assert.match(report.summary, /温度偏高/);
   assert.match(report.summary, /星闪链路偏弱/);
   assert.equal(report.evidence.some((item) => item.code === "rssi_weak"), true);
+});
+
+test("agent report ignores weak-link rule when RSSI was not actually reported", () => {
+  const report = createAgentReport([
+    {
+      id: "reading-no-rssi",
+      deviceId: "ws63-car-001",
+      baseStationId: "sle-base-001",
+      temperature: 26.2,
+      humidity: 55,
+      lightness: 500,
+      gear: "P",
+      direction: "forward",
+      status: "idle",
+      linkMode: "sle",
+      cachedCount: 0,
+      recordedAt: "2026-07-04T01:00:00.000Z"
+    }
+  ]);
+
+  assert.equal(report.evidence.some((item) => item.code === "rssi_weak"), false);
 });

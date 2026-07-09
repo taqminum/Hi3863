@@ -7,6 +7,7 @@
  * 2026-07-06, Create file.
  */
 #include "common_def.h"
+#include <stdio.h>
 #include "soc_osal.h"
 #include "app_init.h"
 #include "securec.h"
@@ -22,18 +23,68 @@
 
 #define GATEWAY_SLE_STACK_SIZE              0x1200
 #define GATEWAY_UDP_STACK_SIZE              0x1000
+#define GATEWAY_RSSI_STACK_SIZE             0x800
 #define GATEWAY_SLE_PRIO                    28
 #define GATEWAY_UDP_PRIO                    27
+#define GATEWAY_RSSI_PRIO                   25
 #define SLE_ADV_HANDLE_DEFAULT              1
 
 #define GATEWAY_SLE_MSG_QUEUE_LEN           5
 #define GATEWAY_SLE_MSG_QUEUE_MAX_SIZE      32
 #define GATEWAY_SLE_QUEUE_DELAY             0xFFFFFFFF
 #define GATEWAY_SLE_TASK_INTERVAL_MS        2000
+#define GATEWAY_RSSI_INTERVAL_MS            1000
 
 #define GATEWAY_LOG                         "[ws63e_gateway]"
+#define GATEWAY_TELEMETRY_WITH_RSSI_SIZE    512
 
 static unsigned long g_gateway_sle_msgqueue_id;
+
+static int gateway_build_telemetry_with_rssi(const uint8_t *data, uint16_t len, char *out, uint16_t out_size)
+{
+    int8_t rssi;
+    char source[GATEWAY_TELEMETRY_WITH_RSSI_SIZE];
+    uint16_t copy_len;
+    char *tail;
+    int written;
+
+    if (data == NULL || out == NULL || out_size == 0 || len == 0 || len >= sizeof(source)) {
+        return -1;
+    }
+    if (sle_uart_server_get_latest_rssi(&rssi) != 0) {
+        return -1;
+    }
+
+    (void)memset_s(source, sizeof(source), 0, sizeof(source));
+    copy_len = len;
+    while (copy_len > 0 && (data[copy_len - 1] == '\0' || data[copy_len - 1] == '\r' || data[copy_len - 1] == '\n')) {
+        copy_len--;
+    }
+    if (copy_len == 0 || copy_len >= sizeof(source)) {
+        return -1;
+    }
+    if (memcpy_s(source, sizeof(source), data, copy_len) != EOK) {
+        return -1;
+    }
+    if (strstr(source, "\"rssi\"") != NULL) {
+        if (copy_len >= out_size || memcpy_s(out, out_size, source, copy_len) != EOK) {
+            return -1;
+        }
+        out[copy_len] = '\0';
+        return (int)copy_len;
+    }
+
+    tail = strrchr(source, '}');
+    if (tail == NULL) {
+        return -1;
+    }
+    *tail = '\0';
+    written = snprintf(out, out_size, "%s,\"rssi\":%d}", source, rssi);
+    if (written <= 0 || written >= out_size) {
+        return -1;
+    }
+    return written;
+}
 
 /* ---------- SLE Server callbacks (wired to gateway logic) ---------- */
 
@@ -50,8 +101,19 @@ static void gateway_write_request_cbk(uint8_t server_id, uint16_t conn_id,
     osal_printk("%s ssaps write request server_id:%x conn_id:%x handle:%x status:%x\r\n",
         GATEWAY_LOG, server_id, conn_id, write_cb_para->handle, status);
     if (write_cb_para->length > 0 && write_cb_para->value) {
+        char telemetry_with_rssi[GATEWAY_TELEMETRY_WITH_RSSI_SIZE] = {0};
+        int telemetry_len = gateway_build_telemetry_with_rssi(write_cb_para->value, write_cb_para->length,
+            telemetry_with_rssi, sizeof(telemetry_with_rssi));
         osal_printk("%s rx telemetry: %s\r\n", GATEWAY_LOG, write_cb_para->value);
-        telemetry_cache_update(write_cb_para->value, write_cb_para->length);
+        if (telemetry_len > 0) {
+            telemetry_cache_update((const uint8_t *)telemetry_with_rssi, (uint16_t)telemetry_len);
+            osal_printk("%s rx telemetry enriched with measured rssi\r\n", GATEWAY_LOG);
+        } else {
+            telemetry_cache_update(write_cb_para->value, write_cb_para->length);
+        }
+        if (sle_uart_server_request_rssi() != ERRCODE_SLE_SUCCESS) {
+            osal_printk("%s request rssi skipped or failed\r\n", GATEWAY_LOG);
+        }
     }
 }
 
@@ -129,6 +191,19 @@ static void *sle_server_task(const char *arg)
 
 /* ---------- UDP Bridge task ---------- */
 
+static void *gateway_rssi_task(const char *arg)
+{
+    unused(arg);
+    while (1) {
+        if (sle_uart_server_request_rssi() != ERRCODE_SLE_SUCCESS) {
+            osal_msleep(GATEWAY_RSSI_INTERVAL_MS);
+            continue;
+        }
+        osal_msleep(GATEWAY_RSSI_INTERVAL_MS);
+    }
+    return NULL;
+}
+
 static void *udp_bridge_task(const char *arg)
 {
     unused(arg);
@@ -174,6 +249,12 @@ static void gateway_entry(void)
         "GateUdpTask", GATEWAY_UDP_STACK_SIZE);
     if (task_handle != NULL) {
         osal_kthread_set_priority(task_handle, GATEWAY_UDP_PRIO);
+    }
+
+    task_handle = osal_kthread_create((osal_kthread_handler)gateway_rssi_task, 0,
+        "GateRssiTask", GATEWAY_RSSI_STACK_SIZE);
+    if (task_handle != NULL) {
+        osal_kthread_set_priority(task_handle, GATEWAY_RSSI_PRIO);
     }
 
     cloud_uplink_start();

@@ -8,7 +8,7 @@ import {
   normalizeCarTelemetry,
   type LocalTelemetrySample,
   type RawCarTelemetry
-} from "./carProtocol";
+} from "./carProtocol.ts";
 import { registerPlugin } from "@capacitor/core";
 
 interface Ws63UdpPlugin {
@@ -18,13 +18,23 @@ interface Ws63UdpPlugin {
 const ws63Udp = registerPlugin<Ws63UdpPlugin>("Ws63Udp");
 
 export class LocalCarError extends Error {
-  constructor(message: string, readonly status?: number) {
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
     super(message);
+    this.status = status;
   }
 }
 
+const legacyLocalCarUrls = new Set(["http://192.168.6.1:8080"]);
+
 function localBaseUrl(): string {
-  return localStorage.getItem("ws63-local-car-url")?.replace(/\/$/, "") || CAR_LOCAL_BASE_URL;
+  const storedUrl = localStorage.getItem("ws63-local-car-url")?.replace(/\/$/, "");
+  if (!storedUrl || legacyLocalCarUrls.has(storedUrl)) {
+    localStorage.setItem("ws63-local-car-url", CAR_LOCAL_BASE_URL);
+    return CAR_LOCAL_BASE_URL;
+  }
+  return storedUrl;
 }
 
 export function getLocalCarUrl(): string {
