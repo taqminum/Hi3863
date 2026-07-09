@@ -1,4 +1,4 @@
-import type { BaseStationRecord, DeviceRecord, PatrolTask, User } from "../../api";
+﻿import type { BaseStationRecord, DeviceRecord, PatrolTask, User } from "../../api";
 import type { ConnectionMode } from "../../types";
 
 export type MobilePatrolTimelineState = "idle" | "done" | "active" | "error";
@@ -58,8 +58,8 @@ export interface MobilePatrolModel {
 export const MOBILE_PATROL_ROUTE_TEMPLATES = [
   {
     id: "firmware-precheck",
-    label: "鍥轰欢棰勬绾胯矾",
-    name: "棰勬绾胯矾",
+    label: "固件预检线路",
+    name: "预检线路",
     steps: [
       { action: "forward", speed: 45, durationMs: 2000 },
       { action: "left", speed: 35, durationMs: 600 },
@@ -71,8 +71,8 @@ export const MOBILE_PATROL_ROUTE_TEMPLATES = [
   },
   {
     id: "cloud-standard",
-    label: "浜戠宸℃浠诲姟",
-    name: "浜戠宸℃浠诲姟",
+    label: "云端巡检任务",
+    name: "云端巡检任务",
     steps: [
       { action: "forward", speed: 50, durationMs: 1200 },
       { action: "left", speed: 40, durationMs: 500 },
@@ -83,20 +83,20 @@ export const MOBILE_PATROL_ROUTE_TEMPLATES = [
 ] as const satisfies readonly MobilePatrolRouteTemplate[];
 
 const ACTION_LABELS: Record<string, string> = {
-  forward: "鍓嶈繘",
-  backward: "鍚庨€€",
-  left: "宸﹁浆",
-  right: "鍙宠浆",
-  stop: "鍋滄"
+  forward: "前进",
+  backward: "后退",
+  left: "左转",
+  right: "右转",
+  stop: "停止"
 };
 
 const STATUS_LABELS: Record<PatrolTask["status"], string> = {
-  pending: "绛夊緟鎷夊彇",
-  pulled: "宸叉媺鍙?",
-  running: "鎵ц涓?",
-  completed: "宸插畬鎴?",
-  failed: "澶辫触",
-  cancelled: "宸插彇娑?"
+  pending: "等待拉取",
+  pulled: "已拉取",
+  running: "执行中",
+  completed: "已完成",
+  failed: "失败",
+  cancelled: "已取消"
 };
 
 function formatSeconds(durationMs: number): string {
@@ -132,44 +132,44 @@ function formatStep(step: { action?: string; speed?: number; durationMs?: number
 
 export function mobilePatrolTaskDetail(task: PatrolTask): string {
   const steps = parseTaskSteps(task);
-  if (steps.length === 0) return "绛夊緟鍩虹珯鎵ц璺嚎";
+  if (steps.length === 0) return "等待基站执行路线";
   return steps.slice(0, 4).map(formatStep).join(" -> ");
 }
 
 export function mobilePatrolTimeline(task?: PatrolTask): MobilePatrolTimelineItem[] {
   if (!task) {
     return [
-      { title: "绛夊緟鍒涘缓宸℃浠诲姟", meta: "浜戠銆佸熀绔欐垨灏忚溅鐩磋繛鍧囧彲鍙戣捣", state: "idle" },
-      { title: "绛夊緟鍩虹珯鎷夊彇", meta: "浠诲姟鍒涘缓鍚庢樉绀虹湡瀹炵姸鎬?", state: "idle" },
-      { title: "绛夊緟绾胯矾鎵ц", meta: "鎵ц杩涘害鐢变换鍔″洖鎵ф洿鏂?", state: "idle" },
-      { title: "绛夊緟瀹屾垚鍥炴墽", meta: "瀹屾垚鎴栧け璐ュ悗鍦ㄦ澶勬樉绀虹粨鏋?", state: "idle" }
+      { title: "等待创建巡检任务", meta: "云端、基站或小车直连均可发起", state: "idle" },
+      { title: "等待基站拉取", meta: "任务创建后显示真实状态", state: "idle" },
+      { title: "等待线路执行", meta: "执行进度由基站回执更新", state: "idle" },
+      { title: "等待完成回执", meta: "完成或失败后在此处显示结果", state: "idle" }
     ];
   }
   if (task.status === "cancelled") {
     return [
-      { title: "浠诲姟宸插垱寤?", meta: formatTaskTime(task), state: "done" },
-      { title: "浠诲姟宸插彇娑?", meta: "浠诲姟宸插仠姝㈣皟搴?", state: "error" },
-      { title: "绾胯矾鏈户缁墽琛?", meta: "鏈敹鍒版墽琛屽洖鎵?", state: "idle" },
-      { title: "瀹屾垚鍥炴墽", meta: "浠诲姟鍙栨秷锛屾棤瀹屾垚鍥炴墽", state: "idle" }
+      { title: "任务已创建", meta: formatTaskTime(task), state: "done" },
+      { title: "任务已取消", meta: "任务已停止调度", state: "error" },
+      { title: "线路未继续执行", meta: "未收到执行回执", state: "idle" },
+      { title: "完成回执", meta: "任务取消，无完成回执", state: "idle" }
     ];
   }
   const pulled = ["pulled", "running", "completed", "failed"].includes(task.status);
   const running = ["running", "completed"].includes(task.status);
   return [
-    { title: "浠诲姟宸插垱寤?", meta: formatTaskTime(task), state: "done" },
+    { title: "任务已创建", meta: formatTaskTime(task), state: "done" },
     {
-      title: pulled ? "鍩虹珯宸叉媺鍙?" : "绛夊緟鍩虹珯鎷夊彇",
-      meta: pulled ? "浠诲姟宸茶繘鍏ュ熀绔欎晶闃熷垪" : "绛夊緟宸℃妗ユ帴鎴栧熀绔欐媺鍙?",
+      title: pulled ? "基站已拉取" : "等待基站拉取",
+      meta: pulled ? "任务已进入基站侧队列" : "等待巡检桥接或基站拉取",
       state: pulled ? "done" : "idle"
     },
     {
-      title: task.status === "failed" ? "绾胯矾鎵ц澶辫触" : running ? "绾胯矾鎵ц涓?" : "绛夊緟绾胯矾鎵ц",
-      meta: task.status === "failed" ? "鎵ц澶辫触锛岃妫€鏌ュ熀绔欏拰灏忚溅閾捐矾" : mobilePatrolTaskDetail(task),
+      title: task.status === "failed" ? "线路执行失败" : running ? "线路执行中" : "等待线路执行",
+      meta: task.status === "failed" ? "执行失败，请检查基站和小车链路" : mobilePatrolTaskDetail(task),
       state: task.status === "failed" ? "error" : task.status === "running" ? "active" : running ? "done" : "idle"
     },
     {
-      title: task.status === "completed" || task.status === "failed" ? "瀹屾垚鍥炴墽" : "绛夊緟瀹屾垚鍥炴墽",
-      meta: task.finished_at ? formatTaskTime(task) : "绛夊緟瀹屾垚",
+      title: task.status === "completed" || task.status === "failed" ? "完成回执" : "等待完成回执",
+      meta: task.finished_at ? formatTaskTime(task) : "等待完成",
       state: task.status === "completed" ? "done" : "idle"
     }
   ];
@@ -181,7 +181,7 @@ function cardKind(task: PatrolTask, connectionMode: ConnectionMode = "cloud"): "
 }
 
 function cardStatusLabel(task: PatrolTask): string {
-  if (cardKind(task) === "local" && task.status === "running") return "鏈湴鎵ц涓?";
+  if (cardKind(task) === "local" && task.status === "running") return "本地执行中";
   return STATUS_LABELS[task.status];
 }
 
@@ -194,27 +194,29 @@ export function buildMobilePatrolModel(input: MobilePatrolModelInput): MobilePat
   const selectedBase = input.baseStations.find((base) => base.id === input.selectedDevice?.base_station_id);
   const isCloud = input.connectionMode === "cloud";
   const disabledReason = !input.selectedDevice
-    ? "鏈€夋嫨鐩爣灏忚溅"
+    ? "未选择目标小车"
     : isCloud && !input.token
-      ? "璇峰厛鐧诲綍浜戠璐﹀彿"
+      ? "请先登录云端账号"
       : isCloud && !input.cloudApiOnline
-        ? "浜戞湇鍔″櫒鏈繛鎺?"
+        ? "云服务器未连接"
         : isCloud && !input.selectedDevice.base_station_id
-          ? "鏈粦瀹氬熀绔?"
+          ? "未绑定基站"
           : "";
   const latestTask = input.tasks[0] ? taskForStatusLabel(input.tasks[0], input.connectionMode) : undefined;
 
   return {
-    deviceName: input.selectedDevice?.name ?? "鏈€夋嫨鐩爣灏忚溅",
-    baseStationName: selectedBase ? `${selectedBase.name} ${selectedBase.status === "online" ? "鍦ㄧ嚎" : "绂荤嚎"}` : input.selectedDevice?.base_station_id ?? "鏈粦瀹氬熀绔?",
+    deviceName: input.selectedDevice?.name ?? "未选择目标小车",
+    baseStationName: selectedBase
+      ? `${selectedBase.name} ${selectedBase.status === "online" ? "在线" : "离线"}`
+      : input.selectedDevice?.base_station_id ?? "未绑定基站",
     signalLabel: "-- dBm",
     routeTemplates: MOBILE_PATROL_ROUTE_TEMPLATES,
     selectedTemplateId: isCloud ? "cloud-standard" : "firmware-precheck",
-    defaultTaskName: isCloud ? "浜戠宸℃浠诲姟" : "棰勬绾胯矾",
-    estimatedDurationLabel: "绾?7.7s",
+    defaultTaskName: isCloud ? "云端巡检任务" : "预检线路",
+    estimatedDurationLabel: "约 7.7s",
     canCreate: disabledReason === "",
     disabledReason,
-    primaryActionLabel: isCloud ? "涓€閿笅鍙戜换鍔?" : "鍚姩鏈湴宸℃",
+    primaryActionLabel: isCloud ? "一键下发任务" : "启动本地巡检",
     cards: input.tasks.slice(0, 5).map((task) => ({
       id: task.id,
       kind: cardKind(task, input.connectionMode),
@@ -226,7 +228,7 @@ export function buildMobilePatrolModel(input: MobilePatrolModelInput): MobilePat
       baseStationId: task.base_station_id
     })),
     timeline: mobilePatrolTimeline(latestTask),
-    timelineStatusLabel: latestTask ? cardStatusLabel(latestTask) : "绛夊緟浠诲姟",
+    timelineStatusLabel: latestTask ? cardStatusLabel(latestTask) : "等待任务",
     notice: input.notice
   };
 }
