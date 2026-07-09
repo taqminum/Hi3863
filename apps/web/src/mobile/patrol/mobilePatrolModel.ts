@@ -175,13 +175,19 @@ export function mobilePatrolTimeline(task?: PatrolTask): MobilePatrolTimelineIte
   ];
 }
 
-function cardKind(task: PatrolTask): "cloud" | "local" {
+function cardKind(task: PatrolTask, connectionMode: ConnectionMode = "cloud"): "cloud" | "local" {
+  if (connectionMode === "gateway" || connectionMode === "car-direct") return "local";
   return task.id.startsWith("local-task-") || task.created_by === "local-field-operator" ? "local" : "cloud";
 }
 
 function cardStatusLabel(task: PatrolTask): string {
   if (cardKind(task) === "local" && task.status === "running") return "鏈湴鎵ц涓?";
   return STATUS_LABELS[task.status];
+}
+
+function taskForStatusLabel(task: PatrolTask, connectionMode: ConnectionMode): PatrolTask {
+  if (cardKind(task, connectionMode) === "local") return { ...task, id: `local-task-${task.id}` };
+  return task;
 }
 
 export function buildMobilePatrolModel(input: MobilePatrolModelInput): MobilePatrolModel {
@@ -196,7 +202,7 @@ export function buildMobilePatrolModel(input: MobilePatrolModelInput): MobilePat
         : isCloud && !input.selectedDevice.base_station_id
           ? "鏈粦瀹氬熀绔?"
           : "";
-  const latestTask = input.tasks[0];
+  const latestTask = input.tasks[0] ? taskForStatusLabel(input.tasks[0], input.connectionMode) : undefined;
 
   return {
     deviceName: input.selectedDevice?.name ?? "鏈€夋嫨鐩爣灏忚溅",
@@ -211,10 +217,10 @@ export function buildMobilePatrolModel(input: MobilePatrolModelInput): MobilePat
     primaryActionLabel: isCloud ? "涓€閿笅鍙戜换鍔?" : "鍚姩鏈湴宸℃",
     cards: input.tasks.slice(0, 5).map((task) => ({
       id: task.id,
-      kind: cardKind(task),
+      kind: cardKind(task, input.connectionMode),
       name: task.name,
       status: task.status,
-      statusLabel: cardStatusLabel(task),
+      statusLabel: cardStatusLabel(taskForStatusLabel(task, input.connectionMode)),
       detail: mobilePatrolTaskDetail(task),
       timeLabel: formatTaskTime(task),
       baseStationId: task.base_station_id

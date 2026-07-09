@@ -119,3 +119,33 @@ test("labels gateway mode as local execution rather than a cloud task", () => {
   assert.equal(model.cards[0].kind, "local");
   assert.equal(model.cards[0].statusLabel, "鏈湴鎵ц涓?");
 });
+
+test("labels non-cloud connection mode tasks as local without magic task markers", () => {
+  const expectedLocalStatusLabel = buildMobilePatrolModel({
+    user,
+    token: null,
+    connectionMode: "gateway",
+    selectedDevice: device,
+    baseStations: [base],
+    tasks: [task("running", { id: "local-task-reference", created_by: "local-field-operator" })],
+    cloudApiOnline: false,
+    notice: ""
+  }).cards[0].statusLabel;
+
+  for (const connectionMode of ["gateway", "car-direct"] as const) {
+    const model = buildMobilePatrolModel({
+      user,
+      token: null,
+      connectionMode,
+      selectedDevice: device,
+      baseStations: [base],
+      tasks: [task("running", { id: `task-${connectionMode}-ordinary`, created_by: "user-admin" })],
+      cloudApiOnline: false,
+      notice: ""
+    });
+
+    assert.equal(model.cards[0].kind, "local");
+    assert.equal(model.cards[0].statusLabel, expectedLocalStatusLabel);
+    assert.equal(model.timelineStatusLabel, expectedLocalStatusLabel);
+  }
+});
