@@ -353,3 +353,10 @@ select:focus, input:focus, textarea:focus { border-color: var(--color-cyan); box
   .login-visual h1 { font-size: 28px; }
   .audit-item { grid-template-columns: 1fr; }
 }
+
+.mobile-console-host {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #0f1216;
+}
