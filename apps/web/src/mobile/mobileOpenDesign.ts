@@ -199,6 +199,14 @@ body[data-active-view="view-overview"] .content-area {
   padding: 10px !important;
   border-radius: 12px !important;
 }
+#view-overview .ov-data-card.ws63-card-normalized {
+  border-color: var(--border-color) !important;
+  background: var(--bg-surface) !important;
+}
+#view-overview .ov-data-card.ws63-card-normalized .ov-data-value,
+#view-overview .ov-data-card.ws63-card-normalized .ov-data-header i {
+  color: var(--fg-primary) !important;
+}
 #view-overview .data-top-row-card {
   gap: 8px !important;
 }
@@ -793,6 +801,23 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     return snapshot?.detailSeries?.[detailGranularity]?.labels || snapshot?.seriesLabels || [];
   }
 
+  function connectLineSeries(values) {
+    const connected = [...values];
+    let previousIndex = -1;
+    values.forEach((value, index) => {
+      if (!Number.isFinite(value)) return;
+      if (previousIndex >= 0 && index - previousIndex > 1) {
+        const previousValue = values[previousIndex];
+        const step = (value - previousValue) / (index - previousIndex);
+        for (let cursor = previousIndex + 1; cursor < index; cursor += 1) {
+          connected[cursor] = previousValue + step * (cursor - previousIndex);
+        }
+      }
+      previousIndex = index;
+    });
+    return connected;
+  }
+
   function granularityLabel(value) {
     if (value === "minute") return "1m";
     if (value === "hour") return "1h";
@@ -844,10 +869,12 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
       light: { title: "环境光照", unit: "lx", icon: "sun", type: "line", color: "#FFC107", bgColor: "rgba(255, 193, 7, 0.2)" }
     };
     const config = originalStore[key];
-    const values = detailSeriesForKey(key) || snapshotSeriesForKey(key);
-    if (!config || !Array.isArray(values) || !window.Chart) {
+    const rawValues = detailSeriesForKey(key) || snapshotSeriesForKey(key);
+    if (!config || !Array.isArray(rawValues) || !window.Chart) {
       return window.__ws63OriginalOpenChartModal?.(key);
     }
+    const rawLabels = labelsForDetail().length > 0 ? labelsForDetail() : rawValues.map((_, index) => String(index + 1));
+    const values = config.type === "line" ? connectLineSeries(rawValues) : rawValues;
 
     const modal = document.getElementById("chart-modal");
     const title = document.getElementById("modal-title");
@@ -866,7 +893,7 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     window.__ws63DetailedChart = new window.Chart(ctx, {
       type: config.type,
       data: {
-        labels: labelsForDetail().length > 0 ? labelsForDetail() : values.map((_, index) => String(index + 1)),
+        labels: rawLabels,
         datasets: [{
           label: config.unit,
           data: values,
@@ -877,6 +904,7 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
           pointRadius: config.type === "line" ? 4 : 0,
           pointHoverRadius: config.type === "line" ? 8 : 0,
           pointHitRadius: 18,
+          showLine: config.type === "line",
           pointBackgroundColor: "#161A1F",
           pointBorderColor: config.color,
           pointBorderWidth: 2
@@ -907,7 +935,7 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
           y: { position: "left", ticks: { color: "#8E9BAE" } }
         },
         interaction: { mode: "nearest", axis: "x", intersect: false },
-        spanGaps: false,
+        spanGaps: config.type === "line",
         animation: { duration: 0 },
         elements: { line: { tension: 0.4 } }
       }
@@ -1181,7 +1209,15 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     const card = document.querySelector(".topology-card");
     const nodes = Array.from(document.querySelectorAll(".topology-card .node"));
     const links = Array.from(document.querySelectorAll(".topology-card .link-line"));
-    const labels = Array.from(document.querySelectorAll(".topology-card .link-label"));
+    const labels = links.map((link) => {
+      let label = link.querySelector(".link-label");
+      if (!label) {
+        label = document.createElement("span");
+        label.className = "link-label";
+        link.appendChild(label);
+      }
+      return label;
+    });
     card?.classList.toggle("ws63-topology-compact", snapshot.connectionMode !== "cloud");
     if (nodes[1]) {
       const label = nodes[1].querySelector(".node-label");
@@ -1231,8 +1267,19 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
         || (snapshot.connectionMode === "car-direct" && index < 2);
       if (hidden) label.classList.add("ws63-link-hidden");
     });
-    if (labels[0]) labels[0].textContent = snapshot.connectionMode === "cloud" ? "HTTPS" : snapshot.connectionMode === "gateway" ? "UDP" : "LOCAL";
-    if (labels[1]) labels[1].textContent = snapshot.rssiLabel;
+    if (labels[0]) labels[0].textContent = "wifi";
+    if (labels[1]) labels[1].textContent = "wifi";
+    if (labels[2]) labels[2].textContent = "sle";
+  }
+
+  function normalizeOverviewCardStyles() {
+    const cards = Array.from(document.querySelectorAll("#view-overview .ov-data-card"));
+    cards.forEach((card, index) => {
+      if (index === 2) {
+        card.classList.remove("warning", "highlight");
+        card.classList.add("ws63-card-normalized");
+      }
+    });
   }
 
   function updateRiskCard(snapshot) {
@@ -1335,6 +1382,7 @@ const bridgeScript = `<script id="ws63-mobile-host-bridge">
     setMetric(1, snapshot.temperatureLabel);
     setMetric(2, snapshot.humidityLabel);
     setMetric(3, snapshot.lightnessLabel);
+    normalizeOverviewCardStyles();
     setDataMetric("m-temp", snapshot.temperatureLabel);
     setDataMetric("m-humid", snapshot.humidityLabel);
     setDataMetric("m-light", snapshot.lightnessLabel);
@@ -1395,7 +1443,13 @@ function injectBeforeOpenDesignScript(html: string, scriptTag: string, snippet: 
 export function buildMobileOpenDesignSrcDoc(html: string): string {
   const normalizedHtml = html
     .replace(/云\s*API/g, "云服务器")
-    .replace(/环境湿度\s*[（(](?:预警|预测)[）)]/g, "环境湿度");
+    .replace(/CAM-WS-01\s*直播流/g, "摄像头未接入")
+    .replace(/环境湿度\s*[（(](?:预警|预测)[）)]/g, "环境湿度")
+    .replace(/data:\s*\[-70,\s*-69,\s*-68,\s*-71,\s*-67,\s*-68,\s*-69,\s*-70,\s*-68,\s*-66,\s*-67,\s*-68,\s*-69,\s*-68,\s*-68,\s*-70,\s*-71,\s*-69,\s*-68,\s*-67,\s*-66,\s*-68,\s*-67,\s*-68\]/g, "data: Array(24).fill(null)")
+    .replace(/data:\s*\[27\.8,\s*27\.9,\s*28\.0,\s*27\.9,\s*28\.1,\s*28\.2,\s*28\.1,\s*28\.3,\s*28\.4,\s*28\.4,\s*28\.5,\s*28\.4,\s*28\.6,\s*28\.5,\s*28\.4,\s*28\.5,\s*28\.4,\s*28\.3,\s*28\.4,\s*28\.4,\s*28\.3,\s*28\.2,\s*28\.3,\s*28\.4\]/g, "data: Array(24).fill(null)")
+    .replace(/data:\s*\[45,\s*46,\s*45,\s*48,\s*52,\s*58,\s*65,\s*72,\s*75,\s*78,\s*80,\s*81,\s*79,\s*82,\s*81,\s*83,\s*82,\s*84,\s*83,\s*82,\s*81,\s*80,\s*81,\s*82\]/g, "data: Array(24).fill(null)")
+    .replace(/data:\s*\[1200,\s*1210,\s*1205,\s*1215,\s*1220,\s*1218,\s*1230,\s*1225,\s*1240,\s*1235,\s*1245,\s*1240,\s*1250,\s*1248,\s*1245,\s*1255,\s*1240,\s*1235,\s*1245,\s*1240,\s*1230,\s*1240,\s*1245,\s*1240\]/g, "data: Array(24).fill(null)")
+    .replace(/function generateMockData\(baseData, range, variance\)\s*\{\s*if\(range === '1H'\) return \[\.\.\.baseData\];\s*const len = range === '7D' \? 7 : 24; const res = \[\]; let val = baseData\[0\];\s*for\(let i=0; i<len; i\+\+\) \{ val = val \+ \(Math\.random\(\)\*variance\*2 - variance\); res\.push\(val\); \} return res;\s*\}/g, "function generateMockData(baseData, range, variance) { const len = range === '7D' ? 7 : 24; return Array(len).fill(null); }");
   const withPatch = normalizedHtml.includes("ws63-mobile-landscape-patch")
     ? normalizedHtml
     : injectBeforeCloseTag(normalizedHtml, "</head>", landscapePatch);

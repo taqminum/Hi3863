@@ -80,6 +80,30 @@ test("opens detail chart modal with live snapshot scale instead of mock light ra
   assert.match(result, /function setChartReadout\(titleNode, label, value, unit\)/);
 });
 
+test("overview topology link labels are normalized to wifi wifi sle", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /labels\[0\]\.textContent = "wifi"/);
+  assert.match(result, /labels\[1\]\.textContent = "wifi"/);
+  assert.match(result, /labels\[2\]\.textContent = "sle"/);
+  assert.doesNotMatch(result, /labels\[1\]\.textContent = snapshot\.rssiLabel/);
+});
+
+test("overview humidity card is normalized instead of staying warning highlighted", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /function normalizeOverviewCardStyles\(\)/);
+  assert.match(result, /card\.classList\.remove\("warning", "highlight"\)/);
+  assert.match(result, /ws63-card-normalized/);
+});
+
+test("detail line chart connects adjacent real data points without compressing the time axis", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><head></head><body></body></html>");
+  assert.match(result, /function connectLineSeries\(values\)/);
+  assert.match(result, /labels: rawLabels/);
+  assert.match(result, /showLine: config\.type === "line"/);
+  assert.match(result, /spanGaps: config\.type === "line"/);
+  assert.doesNotMatch(result, /compactLabels/);
+});
+
 test("injects info modal for connection and agent details", () => {
   const result = buildMobileOpenDesignSrcDoc("<html><head></head><body><div class=\"cloud-status\"></div><div class=\"risk-card\"></div></body></html>");
   assert.match(result, /function showInfoModal\(title, bodyHtml\)/);
@@ -126,6 +150,21 @@ test("bridge routes time range buttons to host instead of mock chart data", () =
   assert.match(result, /attachHistoryRangeBridge/);
   assert.match(result, /event\.stopImmediatePropagation\(\)/);
   assert.match(result, /send\("history-range", \{ range \}\)/);
+});
+
+test("mobile srcDoc clears prototype chart data instead of rendering random mock curves", () => {
+  const html = readFileSync(new URL("./open-design/ws63e-inspection-app-full-8.html", import.meta.url), "utf8");
+  const result = buildMobileOpenDesignSrcDoc(html);
+
+  assert.match(result, /data: Array\(24\)\.fill\(null\)/);
+  assert.doesNotMatch(result, /Math\.random\(\)\*variance/);
+});
+
+test("mobile srcDoc labels unavailable camera as not connected", () => {
+  const result = buildMobileOpenDesignSrcDoc("<html><body><div>CAM-WS-01 直播流</div></body></html>");
+
+  assert.match(result, /摄像头未接入/);
+  assert.doesNotMatch(result, /CAM-WS-01 直播流/);
 });
 
 test("injects touch isolation before Open Design scripts and routes joystick touches by role", () => {
