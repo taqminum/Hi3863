@@ -1,6 +1,7 @@
 # Local assistant / editor state
 .claude/
 .codex/
+.superpowers/
 .gitnexus/
 .workbuddy/
 .worktrees/
