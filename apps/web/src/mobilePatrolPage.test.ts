@@ -1,4 +1,5 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -67,4 +68,12 @@ test("renders a React clone of the mobile patrol three-column page", () => {
   assert.match(html, /WS63E 环境巡检小车 001/);
   assert.match(html, /一键下发任务/);
   assert.match(html, /线路执行中/);
+});
+
+test("leaves the Open Design side nav visible beside the React patrol page", () => {
+  const css = readFileSync(new URL("./mobile/patrol/mobilePatrol.css", import.meta.url), "utf8");
+
+  assert.match(css, /--mobile-patrol-side-nav-width:\s*80px/);
+  assert.match(css, /right:\s*calc\(var\(--ws63-system-right-reserve,\s*96px\) \+ var\(--mobile-patrol-side-nav-width\)\)/);
+  assert.doesNotMatch(css, /grid-template-columns:\s*minmax\(190px,\s*0\.72fr\)\s+minmax\(0,\s*1fr\)/);
 });

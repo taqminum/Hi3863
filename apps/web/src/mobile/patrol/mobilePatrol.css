@@ -1,9 +1,13 @@
 ﻿.mobile-patrol-page {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: calc(var(--ws63-system-right-reserve, 96px) + var(--mobile-patrol-side-nav-width));
+  bottom: 0;
+  left: 0;
+  --mobile-patrol-side-nav-width: 80px;
   z-index: 6;
   box-sizing: border-box;
-  padding: clamp(10px, 2.2vh, 16px) calc(var(--ws63-system-right-reserve, 96px) + 12px) clamp(10px, 2.2vh, 16px) 16px;
+  padding: clamp(10px, 2.2vh, 16px) 12px clamp(10px, 2.2vh, 16px) 16px;
   background: var(--bg-app, #0f1216);
   color: var(--fg-primary, #f4f7fb);
   font-family: var(--font-ui, "Inter", "Microsoft YaHei", sans-serif);
@@ -11,8 +15,8 @@
 
 .mobile-patrol-layout {
   display: grid;
-  grid-template-columns: minmax(190px, 0.72fr) minmax(0, 1fr) minmax(210px, 0.82fr);
-  gap: 16px;
+  grid-template-columns: minmax(190px, 0.72fr) minmax(260px, 0.82fr) minmax(210px, 0.82fr);
+  gap: 14px;
   height: 100%;
 }
 
